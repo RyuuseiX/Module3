@@ -52,33 +52,32 @@ uint64_t Time_Stamp = 0;
 float Encoder_Resolution = 8192;  	//2048*4
 float dt = 0.001;
 float pi = 3.14159265359;			//value of pi
-uint16_t Distance_Long = 0;			//Long or Short distance
+bool Distance_Long = true;			//Long or Short distance
 									//if long use Trajectory_Generation()
 									//if short use Position_Control()
-uint16_t Distance_Calculated = 0;	//Calculate distance yet?
-
+bool Distance_Calculated = false;	//Calculate distance yet?
 
 //Velocity Control
 float Velocity_Encoder = 0;  		//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in pulse per second
 float Velocity_Real = 0;			//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in RPM
-float Velocity_Want = 0;			//Velocity calculated for control motor at the time
+float Velocity_Want = 10;			//Velocity calculated for control motor at the time
 float Velocity_Error = 0;			//Velocity error from Velocity_Want
-float Velocity_K_P = 1500;			//K_P of "Velocity_Control()"
-float Velocity_K_I = 1;			//K_I of "Velocity_Control()"
-float Velocity_K_D = 0;			//K_D of "Velocity_Control()"
+uint16_t Velocity_K_P = 0;			//K_P of "Velocity_Control()"
+uint16_t Velocity_K_I = 0;			//K_I of "Velocity_Control()"
+uint16_t Velocity_K_D = 0;			//K_D of "Velocity_Control()"
 float Velocity_Error_Sum = 0;		//Sum of Velocity_Error that will be use in integrate part of "Velocity_Control()"
 float Velocity_Error_Diff = 0;		//Difference of Velocity_Error and Velocity_Error_Prev that will be use in differential part of "Velocity_Control()"
 float Velocity_Error_Prev = 0;		//last Velocity_Error
-int16_t PWM_Out = 0;			//PWM for motor
+int16_t PWM_Out = 10000;			//PWM for motor
 
 //Position Control
-uint32_t Position_Encoder = 0;  		//Encoder's now position in CNT
+float Position_Encoder = 0;  		//Encoder's now position in CNT
 float Position_Real = 0;			//Encoder's now position in degree
-float Position_Want = 90;			//Position of the end point  (actually same as Point_Stop)
+float Position_Want = 10;			//Position of the end point  (actually same as Point_Stop)
 float Position_Error = 0;			//Position error from Position_Want
-float Position_K_P = 200;			//K_P of "Position_Control()"
-float Position_K_I = 0;			//K_I of "Position_Control()"
-float Position_K_D = 5;			//K_D of "Position_Control()"
+uint16_t Position_K_P = 0;			//K_P of "Position_Control()"
+uint16_t Position_K_I = 0;			//K_I of "Position_Control()"
+uint16_t Position_K_D = 0;			//K_D of "Position_Control()"
 float Position_Error_Sum = 0;		//Sum of Position_Error that will be use in integrate part of "Position_Control()"
 float Position_Error_Diff = 0;		//Difference of Position_Error and Position_Error_Prev that will be use in differential part of "Position_Control()"
 float Position_Error_Prev = 0;		//last Position_Error
@@ -90,18 +89,12 @@ float Velocity_Max = 10;			//Max velocity & wanted Velocity that system try to a
 float Velocity_Max_Rad = 0;			//Max velocity in radian
 float Time_Blend = 0;				//Calculated time for when a != 0 and have enough distance and time to achieve Velocity_Max
 float Time_All = 0;					//Calculated time for all distance
-uint64_t Time_Blend_M = 0;
-uint64_t Time_All_M = 0;
-uint64_t Time_Start = 0;
-uint64_t Time_Now = 0;
 float Position_Start = 0;			//Start position
 float Distance_Degree_Set = 0;		//Distance from Point_Start to Point_Stop in degree
 float Distance_Radian_Set = 0;		//Distance from Point_Start to Point_Stop in radian
 float Distance_Blend = 0;			//Calculated distance for when a != 0 and check that have enough distance and time to achieve Velocity_Max or not
 float Position_Rad = 0;				//Encoder's now position in radian
-uint16_t Flag = 0;
-uint16_t velo = 0;
-uint16_t check = 0;
+float Position_Start = 0;			//Trajectory start position
 
 
 
@@ -163,11 +156,7 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start_IT(&htim2);
-  	HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
-  	//Start TIM3
-  	HAL_TIM_Base_Start(&htim3);
-  	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -181,35 +170,35 @@ int main(void)
 	  		{
 
 	  			Time_Stamp = micros();
-	  			Position_Encoder = htim1.Instance->CNT; //CNT
+	  			Position_Encoder = HTIM_ENCODER.Instance->CNT; //CNT
 	  			Position_Real = (Position_Encoder*360)/Encoder_Resolution;  //degree
-
-	  			if ((Distance_Calculated==1) && (Position_Real != Position_Want)&&(check == 0))
+	  			if ((Distance_Calculated) && (Position_Real != Position_Want))
 	  			{
-	  				velo = 0;
-					Trajectory_Generation();
-					Velocity_Control();
+	  				if (Distance_Long)
+	  				{
+	  					Trajectory_Generation();
+	  					Velocity_Control();
+	  				}
+	  				else if (~Distance_Long)
+	  				{
+	  					Position_Control();
+	  					Velocity_Control();
+	  				}
+
 	  				Motor_Drive_PWM();
 	  			}
-	  			/*else if ((Distance_Calculated==1)&& (Position_Real != Position_Want)&&(check == 1))
-				{
-
-					//Position_Control();
-
-				}*/
-	  			else if (Position_Real == Position_Want)
-				{
-					Distance_Calculated = 0;
-					Velocity_Want = 0;
-					check = 0;
-					Flag = 0;
-				}
-
-	  			if ((Distance_Calculated==0))
+	  			else if ((~Distance_Calculated) && (Position_Real != Position_Want))
 	  			{
-
 	  				Distance_Calculation();
 	  			}
+
+	  			else if (Position_Real = Position_Want)
+	  			{
+	  				Distance_Calculated = false;
+	  				Velocity_Want = 0;
+	  			}
+
+
 	  		}
   }
   /* USER CODE END 3 */
@@ -399,10 +388,10 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 5000;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -465,7 +454,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(Directions_GPIO_Port, Directions_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -492,12 +481,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  /*Configure GPIO pin : Directions_Pin */
+  GPIO_InitStruct.Pin = Directions_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(Directions_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB8 PB9 */
   GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
@@ -525,7 +514,7 @@ float Encoder_Velocity_Update()
 	static uint64_t EncoderLastTimestamp = 0;
 
 	//read data
-	uint32_t EncoderNowPosition = htim1.Instance->CNT;
+	uint32_t EncoderNowPosition = HTIM_ENCODER.Instance->CNT;
 	uint64_t EncoderNowTimestamp = micros();
 
 	int32_t EncoderPositionDiff;
@@ -554,79 +543,52 @@ float Encoder_Velocity_Update()
 }
 void Motor_Drive_PWM()
 {
-	/*if(PWM_Out > 10000)
-	{
-		PWM_Out = 10000;
-	}
-	else if(PWM_Out < -10000)
-	{
-		PWM_Out = -10000;
-	}*/
 	if (PWM_Out < 0)
 	{
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, -PWM_Out);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 0);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, -PWM_Out);
 	}
 
 	else if (PWM_Out >= 0)
 	{
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, PWM_Out);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, 1);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, PWM_Out);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
 	}
 }
 void Velocity_Control()
 {
-	velo = 1;
 	Velocity_Encoder = (Velocity_Encoder*99 + Encoder_Velocity_Update())/100.0;
 	Velocity_Real = (Velocity_Encoder*60)/Encoder_Resolution;
-
-	if (Velocity_Want > Velocity_Max)
-	{
-		Velocity_Want = Velocity_Max;
-	}
-	else if (Velocity_Want < -Velocity_Max)
-	{
-		Velocity_Want = -Velocity_Max;
-	}
 
 	Velocity_Error = Velocity_Want - Velocity_Real;
 	Velocity_Error_Sum = Velocity_Error_Sum + Velocity_Error;
 	Velocity_Error_Diff = Velocity_Error - Velocity_Error_Prev;
 	Velocity_Error_Prev = Velocity_Error;
 
-	PWM_Out = (Velocity_K_P*Velocity_Error) + (Velocity_K_I*Velocity_Error_Sum) + (Velocity_K_D*(Velocity_Error_Diff));
+	PWM_Out = (Velocity_K_P*Velocity_Error) + (Velocity_K_I*Velocity_Error_Sum*dt) + (Velocity_K_D*(Velocity_Error_Diff/dt));
 }
 void Distance_Calculation()
 {
-	Position_Start = Position_Real;
-	Distance_Degree_Set = Position_Want - Position_Start;
 	Distance_Radian_Set = (Distance_Degree_Set*pi)/180;
 	Velocity_Max_Rad = (Velocity_Max*2*pi)/60;
 	Time_Blend = Velocity_Max_Rad / Accel_Max;
-	Time_Blend_M = Time_Blend * 1000000;
-
-	Distance_Blend = 0.5*Accel_Max*(Time_Blend*Time_Blend);
-	Time_All = 2*Time_Blend + (((Distance_Radian_Set-(2*Distance_Blend))/Velocity_Max_Rad));
-	Time_All_M = Time_All * 1000000;
-	if ((2*Distance_Blend) < Distance_Radian_Set)
+	Distance_Blend = 0.5*Accel_Max*(Time_Blend^2);
+	Position_Start = HTIM_ENCODER.Instance->CNT;
+	if ((2*Distance_Blend) >= Distance_Radian_Set)
 	{
-		Distance_Long = 1;
-		Time_All = 2*Time_Blend + (((Distance_Radian_Set-(2*Distance_Blend))/Velocity_Max_Rad));
-		Time_All_M = Time_All * 1000000;
+		Distance_Long = true;
 	}
 
-	else if ((2*Distance_Blend) > Distance_Radian_Set)
+	else if ((2*Distance_Blend) < Distance_Radian_Set)
 	{
-		Distance_Long = 0;
-		Time_All = 2*Time_Blend;
-		Time_All_M = Time_All * 1000000;
+		Distance_Long = false;
 	}
 
-	Distance_Calculated = 1;
+	Distance_Calculated == true;
 }
 void Position_Control()
 {
-	Position_Encoder = htim1.Instance->CNT;
+	Position_Encoder = HTIM_ENCODER.Instance->CNT;
 	Position_Real = (Position_Encoder*360)/Encoder_Resolution;
 
 	Position_Error = Position_Want - Position_Real;
@@ -634,38 +596,29 @@ void Position_Control()
 	Position_Error_Diff = Position_Error - Position_Error_Prev;
 	Position_Error_Prev = Position_Error;
 
-	Velocity_Want = (Position_K_P*Position_Error) + (Position_K_I*Position_Error_Sum) + (Position_K_D*(Position_Error_Diff));
-
+	Velocity_Want = (Position_K_P*Position_Error) + (Position_K_I*Position_Error_Sum*dt) + (Position_K_D*(Position_Error_Diff/dt));
+	if (Velocity_Want > Velocity_Max)
+	{
+		Velocity_Want = Velocity_Max;
+	}
 }
 void Trajectory_Generation()
 {
 	//max achieve velocity is 10 RPM or ~1.05 radian per second
 	//acceleration is fixed at 0.5 radian per second^2
-	Position_Encoder = htim1.Instance->CNT;
+	Position_Encoder = HTIM_ENCODER.Instance->CNT;
 	Position_Rad  = (Position_Encoder*2*pi)/Encoder_Resolution;
-	if (Flag == 0)
+	if (Position_Rad <= Position_Start+Distance_Blend)
 	{
-		Flag = 1;
-		Time_Start = micros();
+		Velocity_Want = Velocity_Max*((Position_Rad-Position_Start)/Distance_Blend);
 	}
-	Time_Now = micros();
-	if (Time_Now <= Time_Start+Time_Blend_M)
+	else if ((Position_Rad > Position_Start+Distance_Blend) && (Position_Rad < Position_Want-Distance_Blend))
 	{
-		Velocity_Want = Velocity_Max*((Time_Now-Time_Start)/Time_Blend_M);
+		Velocity_Want = Velocty_Max;
 	}
-	else if ((Time_Now > Time_Start+Time_Blend_M) && (Time_Now < Time_Start+Time_All_M-Time_Blend_M))
+	else if (Position_Rad >= Position_Want-Distance_Blend)
 	{
-		Velocity_Want = Velocity_Max;
-	}
-	else if ((Time_Now >= Time_Start+Time_All_M-Time_Blend_M) && (Time_Now <Time_Start+Time_All_M))
-	{
-		Velocity_Want = (-Velocity_Max)*((((Time_Now-Time_Start)-(Time_All_M-Time_Blend_M))/Time_Blend_M)-1);
-	}
-	else if (Time_Now >= Time_Start+Time_All_M)
-	{
-		Velocity_Want = 0;
-		check = 1;
-		Flag = 2;
+		Velocity_Want = (-Velocity_Max)*(((Position_Rad-(Position_Want-Distance_Blend))/Distance_Blend)-1);
 	}
 
 }
