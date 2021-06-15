@@ -114,6 +114,7 @@ float Flag4 = 0;
 float P1 = 0;
 float P2 = 0;
 float P3 = 0;
+float Distance_Traveled = 0;
 
 /* USER CODE END PV */
 
@@ -191,9 +192,11 @@ int main(void)
 	  {
 		  Time_Velocity_Stamp = micros();
 		  Velocity_Encoder = (Velocity_Encoder*9999 + Encoder_Velocity_Update())/(float)10000;
+		  Velocity_Control();
 	  }
 	  if (micros() - Time_Sampling_Stamp >= 1000)	  //Control loop
 	  {
+
 			Time_Sampling_Stamp = micros();
 			Position_Encoder = htim1.Instance->CNT; //Read Encoder
 			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
@@ -204,7 +207,7 @@ int main(void)
 			else if ((Distance_Calculated == 1) && (Position_Now_Degree != Position_Want_Degree) && (Trajectory_Flag < 5)) //Distance calculated and not arrive at next station
 			{
 				Trajectory_Generation();	//Get Velocity_Want_RPM
-				Velocity_Control();			//Get PWM_Out
+				Velocity_Control();
 				Motor_Drive_PWM();			//Drive
 
 				if(Trajectory_Flag == 4)
@@ -223,10 +226,9 @@ int main(void)
 					Trajectory_Flag = 0;	//Reset flag
 					Distance_Calculated = 0;//Reset distance
 					Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
-					Flag4 = 0;
 				}
 				Velocity_Want_RPM = 0;
-				Velocity_Control();			//Get PWM_Out
+				Velocity_Control();
 				Motor_Drive_PWM();			//Drive
 
 			}
@@ -688,32 +690,32 @@ void Trajectory_Generation()  //Position Control with Trajectory Generation
 		Trajectory_Flag = 1;
 	}
 	Time_Trajectory_Stamp = micros();
-
+	Distance_Traveled = Position_Rad-Position_Start;
 	if (Distance_Length == LONG)
 	{
 		if ((Time_Trajectory_Stamp-Time_Start) <= Time_Blend_Micro)
 		{
 			Velocity_Want_RPM = Velocity_Max_RPM*((Time_Trajectory_Stamp-Time_Start)/Time_Blend_Micro);
 			Trajectory_Flag = 2;
-			P1 = Position_Rad-Position_Start;
+			P1 = Distance_Traveled;
 		}
 		else if (((Time_Trajectory_Stamp-Time_Start) > (Time_Blend_Micro) )
 				&& (Time_Trajectory_Stamp-Time_Start < Time_All_Micro-Time_Blend_Micro))
 		{
 			Velocity_Want_RPM = Velocity_Max_RPM;
-			P2 = Position_Rad-P1-Position_Start;
+			P2 = Distance_Traveled-P1;
 		}
 		else if (((Time_Trajectory_Stamp-Time_Start) >= (Time_All_Micro-Time_Blend_Micro))
 				&& (Time_Trajectory_Stamp-Time_Start <= Time_All_Micro) )
 		{
 			Velocity_Want_RPM = (-Velocity_Max_RPM)*((((Time_Trajectory_Stamp-Time_Start)-(Time_All_Micro-Time_Blend_Micro))/Time_Blend_Micro)-1);
 			Trajectory_Flag = 3;
-			P3 = Position_Rad-P2-P1-Position_Start;
+
+			P3 = Distance_Traveled-P2-P1;
+
 		}
 		else if ((Time_Trajectory_Stamp-Time_Start) >= Time_All_Micro)
 		{
-			Velocity_Want_RPM = 0;
-
 			Trajectory_Flag = 4;
 		}
 	}
