@@ -66,7 +66,7 @@ float Velocity_Encoder = 0;  		//Encoder's velocity Calculated from "Encoder_Vel
 float Velocity_Now_RPM = 0;			//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in RPM
 float Velocity_Want_RPM = 10;		//Velocity calculated for control motor at the time
 float Velocity_K_P = 1500;			//K_P of "Velocity_Control()"
-float Velocity_K_I = 1;				//K_I of "Velocity_Control()"
+float Velocity_K_I = 1;			//K_I of "Velocity_Control()"
 float Velocity_K_D = 0;				//K_D of "Velocity_Control()"
 float Velocity_Error = 0;			//Velocity error from Velocity_Want_RPM
 float Velocity_Error_Sum = 0;		//Sum of Velocity_Error that will be use in integrate part of "Velocity_Control()"
@@ -178,37 +178,37 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  if ((micros() - Time_Sampling_Stamp2) >= 100)   //Velocity response must be faster
+	  if ((micros() - Time_Sampling_Stamp2) >= 100)
 	  {
 		  Time_Sampling_Stamp2 = micros();
 		  Velocity_Encoder = (Velocity_Encoder*999) + (Encoder_Velocity_Update()/1000);
 	  }
-	  if (micros() - Time_Sampling_Stamp >= 1000)	  //Control loop
+	  if (micros() - Time_Sampling_Stamp >= 1000)//uS
 	  {
 
 			Time_Sampling_Stamp = micros();
-			Position_Encoder = htim1.Instance->CNT; //Read Encoder
-			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
-			if ((Distance_Calculated == 1) && (Position_Now_Degree != Position_Want_Degree)) //Distance calculated and not arrive at next station
+			Position_Encoder = htim1.Instance->CNT; //CNT
+			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution;  //degree
+			if ((Distance_Calculated == 1) && (Position_Now_Degree != Position_Want_Degree))
 			{
-				Trajectory_Generation();	//Get Velocity_Want_RPM
-				Velocity_Control();			//Get PWM_Out
-				Motor_Drive_PWM();			//Drive
+				Trajectory_Generation();
+				Velocity_Control();
+				Motor_Drive_PWM();
 			}
-			else if ((Distance_Calculated == 0) && (Position_Now_Degree != Position_Want_Degree)) //Distance not calculated and not arrive at next station
+			else if ((Distance_Calculated == 0) && (Position_Now_Degree != Position_Want_Degree))
 			{
-				Distance_Calculation();		//Calculate distance
+				Distance_Calculation();
 			}
 
-			if (Trajectory_Flag == 2)		//Reach next station
+			if (Trajectory_Flag == 2)
 			{
-				if (Position_Prev_Degree != Position_Want_Degree)	//Change goal
+				if (Position_Prev_Degree != Position_Want_Degree)
 				{
-					Trajectory_Flag = 0;	//Reset flag
-					Distance_Calculated = 0;//Reset distance
-					Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
+					Trajectory_Flag = 0;
+					Distance_Calculated = 0;
+					Velocity_Want_RPM = 0;
 				}
-				Position_Prev_Degree = Position_Want_Degree; //Check that Position_Want_Degree change or not
+				Position_Prev_Degree = Position_Want_Degree;
 			}
 
 
@@ -517,7 +517,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-float Encoder_Velocity_Update()  //Lecture code DON'T TOUCH!
+float Encoder_Velocity_Update()
 {
 	//Save Last state
 	static uint32_t EncoderLastPosition = 0;
@@ -552,9 +552,9 @@ float Encoder_Velocity_Update()  //Lecture code DON'T TOUCH!
 	return (EncoderPositionDiff * 1000000) / (float) EncoderTimeDiff;
 }
 
-#define PWM_CHANNEL TIM_CHANNEL_4			//Set channel for PWM
-#define GPIO_PIN_DIRECTION GPIO_PIN_10		//Set pin for direction
-void Motor_Drive_PWM()	//Motor drive
+#define PWM_CHANNEL TIM_CHANNEL_4
+#define GPIO_PIN_DIRECTION GPIO_PIN_10
+void Motor_Drive_PWM()
 {
 	if (PWM_Out < 0)
 	{
@@ -568,9 +568,9 @@ void Motor_Drive_PWM()	//Motor drive
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_DIRECTION, GPIO_PIN_SET);
 	}
 }
-void Velocity_Control()  //Velocity Control PID
+void Velocity_Control()
 {
-	Velocity_Now_RPM = (Velocity_Encoder*60)/Encoder_Resolution;	//Convert Velocity_Encoder (Encoder's velocity at the moment) to RPM
+	Velocity_Now_RPM = (Velocity_Encoder*60)/Encoder_Resolution;
 
 	Velocity_Error = Velocity_Want_RPM - Velocity_Now_RPM;
 	Velocity_Error_Sum = Velocity_Error_Sum + Velocity_Error;
@@ -580,43 +580,43 @@ void Velocity_Control()  //Velocity Control PID
 	PWM_Out = (Velocity_K_P*Velocity_Error) + (Velocity_K_I*Velocity_Error_Sum) + (Velocity_K_D*(Velocity_Error_Diff));
 
 }
-void Distance_Calculation()	//Calculate that distance is short or long
+void Distance_Calculation()
 {
+	//max achieve velocity is 10 RPM or ~1.05 radian per second
 	//acceleration is fixed at 0.5 radian per second^2
 
-	Distance_Degree_Set = Position_Want_Degree - Position_Now_Degree;  //Get distance from  EndPoint - StartPoint in degree
-	Distance_Radian_Set = (Distance_Degree_Set*pi)/180;				   //Change Distance_Degree_Set to radian
+	Distance_Degree_Set = Position_Want_Degree - Position_Now_Degree;
+	Distance_Radian_Set = (Distance_Degree_Set*pi)/180;
 
-	Velocity_Max_Rad = (Velocity_Max_RPM*2*pi)/60;					   //Change max velocity to radian per second
+	Velocity_Max_Rad = (Velocity_Max_RPM*2*pi)/60;
 
-	Time_Blend = Velocity_Max_Rad*2;								   //Time used for motor to reach Velocity_Max_Rad with a=0.5 radian per second^2
-	Time_Blend_Micro = Time_Blend*1000000;							   //Change from second to microsecond
+	Time_Blend = Velocity_Max_Rad*2;
+	Time_Blend_Micro = Time_Blend*1000000;
 
-	Distance_Blend = 2*(powf(Velocity_Max_Rad, 2));					   //Distance used for motor to reach Velocity_Max_Rad with a=0.5 radian per second^2
+	Distance_Blend = 2*(powf(Velocity_Max_Rad, 2));
+	Distance_Center = Distance_Radian_Set - (2*Distance_Blend);
 
+	Time_All = (2*Time_Blend) + (Distance_Center/Velocity_Max_Rad);
+	Time_All_Micro = Time_All*1000000;
 
-	Position_Start = htim1.Instance->CNT;							   //Set starting point
-	if ((2*Distance_Blend) < Distance_Radian_Set)					   //Distance_Radian_Set is long enough to achieve Velocity_Max_Rad
+	Position_Start = htim1.Instance->CNT;
+	if ((2*Distance_Blend) <= Distance_Radian_Set)
 	{
 		Distance_Length = LONG;
-		Distance_Center = Distance_Radian_Set - (2*Distance_Blend);	   //Distance when a=0 radian per second^2
-
-		Time_All = (2*Time_Blend) + (Distance_Center/Velocity_Max_Rad);//Time use to reach next station
-		Time_All_Micro = Time_All*1000000;							   //Change from second to microsecond
 	}
 
-	else if ((2*Distance_Blend) >= Distance_Radian_Set)				   //Distance_Radian_Set is not long enough to achieve Velocity_Max_Rad
+	else if ((2*Distance_Blend) > Distance_Radian_Set)
 	{
 		Distance_Length = SHORT;
-		Time_Blend = sqrtf(Distance_Radian_Set*2);					   //Time used for motor to reach Velocity_Achieve_Rad with a=0.5 radian per second^2
-		Time_Blend_Micro = Time_Blend*1000000;						   //Change from second to microsecond
-		Velocity_Achieve_Rad = sqrtf(Distance_Radian_Set/2);		   //Top limit velocity that motor can achieve in short distance
-		Velocity_Achieve_RPM = (Velocity_Achieve_Rad*60)/(2*pi);	   //Change from radian per second to RPM
+		Time_Blend = sqrtf(Distance_Radian_Set*2);
+		Time_Blend_Micro = Time_Blend*1000000;
+		Velocity_Achieve_Rad = sqrtf(Distance_Radian_Set/2);
+		Velocity_Achieve_RPM = (Velocity_Achieve_Rad*60)/(2*pi);
 	}
 
 	Distance_Calculated = 1;
 }
-void Position_Control()  //Position Control PID
+void Position_Control()
 {
 	Position_Encoder = htim1.Instance->CNT;
 	Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution;  //degree
@@ -627,12 +627,12 @@ void Position_Control()  //Position Control PID
 	Position_Error_Prev = Position_Error;
 
 	Velocity_Want_RPM = (Position_K_P*Position_Error) + (Position_K_I*Position_Error_Sum) + (Position_K_D*(Position_Error_Diff));
-	if (Velocity_Want_RPM > Velocity_Max_RPM)		//If Velocity_Want_RPM exceed Velocity_Max_RPM
+	if (Velocity_Want_RPM > Velocity_Max_RPM)
 	{
-		Velocity_Want_RPM = Velocity_Max_RPM;		//Run with Velocity_Max_RPM
+		Velocity_Want_RPM = Velocity_Max_RPM;
 	}
 }
-void Trajectory_Generation()  //Position Control with Trajectory Generation
+void Trajectory_Generation()
 {
 
 	Position_Encoder = htim1.Instance->CNT;
