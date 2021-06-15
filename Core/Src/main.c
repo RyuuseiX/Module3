@@ -189,43 +189,30 @@ int main(void)
 			Time_Sampling_Stamp = micros();
 			Position_Encoder = htim1.Instance->CNT; //Read Encoder
 			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
-			if ((Position_Now_Degree != Position_Want_Degree))
+			if (Distance_Calculated == 0) //Distance not calculated and not arrive at next station
 			{
+				Distance_Calculation();		//Calculate distance
+			}
+			if ((Distance_Calculated == 1) && (Position_Now_Degree != Position_Want_Degree)) //Distance calculated and not arrive at next station
+			{
+				Trajectory_Generation();	//Get Velocity_Want_RPM
+				Velocity_Control();			//Get PWM_Out
+				Motor_Drive_PWM();			//Drive
+			}
 
 
-				if (Distance_Calculated == 0) //Distance not calculated and not arrive at next station
+			if (Trajectory_Flag == 4)		//Reach next station
+			{
+				if (Position_Prev_Degree != Position_Want_Degree)	//Change goal
 				{
-					Distance_Calculation();		//Calculate distance
-				}
-				else if ((Distance_Calculated == 1) && (Trajectory_Flag <4)) //Distance calculated and not arrive at next station
-				{
-					Trajectory_Generation();	//Get Velocity_Want_RPM
-					Velocity_Control();			//Get PWM_Out
-					Motor_Drive_PWM();			//Drive
-				}
-
-				else if (Trajectory_Flag == 4)		//Reach next station
-				{
-					if (Position_Prev_Degree != Position_Want_Degree)	//Change goal
-					{
-						Trajectory_Flag = 0;	//Reset flag
-						Distance_Calculated = 0;//Reset distance
-						Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
-					}
-					/*Position_Control();
-					Velocity_Control();			//Get PWM_Out
-					Motor_Drive_PWM();			//Drive*/
-
+					Trajectory_Flag = 0;	//Reset flag
+					Distance_Calculated = 0;//Reset distance
+					Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
 				}
 
 			}
-			/*else if ((Position_Now_Degree = Position_Want_Degree))
-			{
-				Trajectory_Flag = 0;	//Reset flag
-				Distance_Calculated = 0;//Reset distance
-				Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
-			}*/
 			Position_Prev_Degree = Position_Want_Degree; //Check that Position_Want_Degree change or not
+
 
 
 	  }
