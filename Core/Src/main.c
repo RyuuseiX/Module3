@@ -76,7 +76,7 @@ int16_t PWM_Out = 0;				//PWM for motor
 //Position Control
 float Position_Encoder = 0;  		//Encoder's now position in CNT
 float Position_Now_Degree = 0;		//Encoder's now position in degree
-float Position_Want_Degree = 90;		//Position of the end point  (actually same as Point_Stop)
+float Position_Want_Degree = 0;		//Position of the end point  (actually same as Point_Stop)
 float Position_Prev_Degree = 0;		//Check that Position_Want_Degree changed or not
 float Position_K_P = 228.62;		//K_P of "Position_Control()"
 float Position_K_I = 0;			    //K_I of "Position_Control()"
@@ -200,7 +200,7 @@ int main(void)
 			Time_Sampling_Stamp = micros();
 			Position_Encoder = htim1.Instance->CNT; //Read Encoder
 			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
-			if (Distance_Calculated == 0) //Distance not calculated and not arrive at next station
+			if ((Distance_Calculated == 0 )&& (Position_Now_Degree != Position_Want_Degree)) //Distance not calculated and not arrive at next station
 			{
 				Distance_Calculation();		//Calculate distance
 			}
@@ -230,11 +230,13 @@ int main(void)
 
 			if (Trajectory_Flag == 5)		//Reach next station
 			{
+
 				if (Position_Prev_Degree != Position_Want_Degree)	//Change goal
 				{
 					Trajectory_Flag = 0;	//Reset flag
 					Distance_Calculated = 0;//Reset distance
 					Velocity_Want_RPM = 0;  //Reset Velocity_Want_RPM
+					Velocity_Error_Sum = 0;
 				}
 				Velocity_Want_RPM = 0;
 				Velocity_Control();
