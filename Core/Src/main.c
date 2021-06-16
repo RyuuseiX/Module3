@@ -63,7 +63,7 @@ uint16_t Distance_Calculated = 0;	//Calculate distance yet?
 //Velocity Control
 float Velocity_Encoder = 0;  		//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in pulse per second
 float Velocity_Now_RPM = 0;			//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in RPM
-float Velocity_Want_RPM = 10;		//Velocity calculated for control motor at the time
+float Velocity_Want_RPM = 0;		//Velocity calculated for control motor at the time
 float Velocity_K_P = 2000;			//K_P of "Velocity_Control()"
 float Velocity_K_I = 1;				//K_I of "Velocity_Control()"
 float Velocity_K_D = 0;				//K_D of "Velocity_Control()"
