@@ -212,7 +212,16 @@ int main(void)
 
 				if(Trajectory_Flag == 4)
 				{
-					Trajectory_Flag = 5;
+					if(Distance_Length == 0)
+					{
+						Trajectory_Flag = 5;
+					}
+					else if (Distance_Length == 1)
+					{
+						Distance_Calculation();
+						Trajectory_Flag = 0;
+					}
+
 				}
 
 
