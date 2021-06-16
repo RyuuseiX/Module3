@@ -192,7 +192,7 @@ int main(void)
 	  {
 		  Time_Velocity_Stamp = micros();
 		  Velocity_Encoder = (Velocity_Encoder*9999 + Encoder_Velocity_Update())/(float)10000;
-		  Velocity_Control();
+
 	  }
 	  if (micros() - Time_Sampling_Stamp >= 1000)	  //Control loop
 	  {
