@@ -61,8 +61,6 @@ uint64_t Time_Trajectory_Stamp = 0;	//Time to calculate in "Trajectory_Generatai
 const uint16_t Encoder_Resolution = 8192; //2048*4
 const uint16_t Encoder_Overflow = 4096;	//8192/2
 const float pi = 3.14159265359;			//value of pi
-const uint8_t Station_List[10] = {0,0,0,0,0,0,0,0,0,0};
-uint16_t Goal_List[20] = {0};
 
 uint16_t Distance_Length = 0;		//Long or Short distance
 uint16_t Distance_Calculated = 0;	//Calculate distance yet?
@@ -147,34 +145,9 @@ typedef struct _UartStructure
 	uint16_t RxTail; //RXHeadUseDMA
 
 } UARTStucrture;
-uint8_t UART_Ack1[2] = {88,117};
-uint8_t UART_Ack2[2] = {70,110};
-UARTStucrture UART2 = {0};
-typedef enum
-{
-	Start_Mode,
-	N_Station,
-	Data_Frame,
-	Check_Sum
-}UART_State;
+uint8_t Acknowledge_1[2] = {88,117};
+uint8_t Acknowledge_2[2] = {70,110};
 
-typedef enum
-{
-	Test_Command = 145,
-	Connect_MCU,
-	Disconnect_MCU,
-	Velocity_Set,
-	Position_Set,
-	Goal_1_Set,
-	Goal_N_Set,
-	Go_to_Goal,
-	Station_Request,
-	Position_Request,
-	Velocity_Request,
-	Gripper_On,
-	Gripper_Off,
-	Home_Set
-}UART_Mode;
 
 /* USER CODE END PV */
 
@@ -197,15 +170,6 @@ void Position_Control();			//PID position control for short distance
 void Trajectory_Generation();		//Calculate velocity base on Accel_Max for long distance
 void Distance_Calculation();		//Calculate distance if it short or long
 void Kalman_Filter();				//State Observer
-
-void UARTInit(UARTStucrture *uart);
-void UARTResetStart(UARTStucrture *uart);
-uint32_t UARTGetRxHead(UARTStucrture *uart);
-int16_t UARTReadChar(UARTStucrture *uart);
-void UARTTxDumpBuffer(UARTStucrture *uart);
-void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len);
-void UART_Protocol(UARTStucrture *uart, int16_t dataIn);
-
 
 
 /* USER CODE END PFP */
@@ -256,12 +220,6 @@ int main(void)
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);   //Start reading encoder
   HAL_TIM_Base_Start(&htim3);						//Start TIM3
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);			//Start PWM TIM3
-
-  UART2.huart = &huart2;
-  UART2.RxLen = 255;
-  UART2.TxLen = 255;
-  UARTInit(&UART2);
-  UARTResetStart(&UART2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -271,11 +229,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	int16_t inputChar = UARTReadChar(&UART2);
-	if (inputChar != -1)
-	{
-		UART_Protocol(&UART2, inputChar);
-	}
+
 
 
 
@@ -942,14 +896,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				{
 					Trajectory_Flag = 5;
 				}
-			/*	else if (Distance_Length == 1)
+				else if (Distance_Length == 1)
 				{
 					Distance_Calculation();
 					Trajectory_Flag = 0;
 				}
-			*/
-
-
 
 			}
 
@@ -974,216 +925,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		Position_Prev_Degree = Position_Want_Degree; //Check that Position_Want_Degree change or not
 	}
 }
-void UARTInit(UARTStucrture *uart)
-{
-	//dynamic memory allocate
-	uart->RxBuffer = (uint8_t*) calloc(sizeof(uint8_t), UART2.RxLen);
-	uart->TxBuffer = (uint8_t*) calloc(sizeof(uint8_t), UART2.TxLen);
-	uart->RxTail = 0;
-	uart->TxTail = 0;
-	uart->TxHead = 0;
 
-}
-
-void UARTResetStart(UARTStucrture *uart)
-{
-	HAL_UART_Receive_DMA(uart->huart, uart->RxBuffer, uart->RxLen);
-}
-uint32_t UARTGetRxHead(UARTStucrture *uart)
-{
-	return uart->RxLen - __HAL_DMA_GET_COUNTER(uart->huart->hdmarx);
-}
-int16_t UARTReadChar(UARTStucrture *uart)
-{
-	int16_t Result = -1; // -1 Mean no new data
-
-	//check Buffer Position
-	if (uart->RxTail != UARTGetRxHead(uart))
-	{
-		//get data from buffer
-		Result = uart->RxBuffer[uart->RxTail];
-		uart->RxTail = (uart->RxTail + 1) % uart->RxLen;
-
-	}
-	return Result;
-
-}
-void UARTTxDumpBuffer(UARTStucrture *uart)
-{
-	static uint8_t MultiProcessBlocker = 0;
-
-	if (uart->huart->gState == HAL_UART_STATE_READY && !MultiProcessBlocker)
-	{
-		MultiProcessBlocker = 1;
-
-		if (uart->TxHead != uart->TxTail)
-		{
-			//find len of data in buffer (Circular buffer but do in one way)
-			uint16_t sentingLen =
-					uart->TxHead > uart->TxTail ?
-							uart->TxHead - uart->TxTail :
-							uart->TxLen - uart->TxTail;
-
-			//sent data via DMA
-			HAL_UART_Transmit_DMA(uart->huart, &(uart->TxBuffer[uart->TxTail]),
-					sentingLen);
-			//move tail to new position
-			uart->TxTail = (uart->TxTail + sentingLen) % uart->TxLen;
-
-		}
-		MultiProcessBlocker = 0;
-	}
-}
-void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len)
-{
-	//check data len is more than buffur?
-	uint16_t lenAddBuffer = (len <= uart->TxLen) ? len : uart->TxLen;
-	// find number of data before end of ring buffer
-	uint16_t numberOfdataCanCopy =
-			lenAddBuffer <= uart->TxLen - uart->TxHead ?
-					lenAddBuffer : uart->TxLen - uart->TxHead;
-	//copy data to the buffer
-	memcpy(&(uart->TxBuffer[uart->TxHead]), pData, numberOfdataCanCopy);
-
-	//Move Head to new position
-
-	uart->TxHead = (uart->TxHead + lenAddBuffer) % uart->TxLen;
-	//Check that we copy all data That We can?
-	if (lenAddBuffer != numberOfdataCanCopy)
-	{
-		memcpy(uart->TxBuffer, &(pData[numberOfdataCanCopy]),
-				lenAddBuffer - numberOfdataCanCopy);
-	}
-	UARTTxDumpBuffer(uart);
-
-}
-void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
-{
-	static UART_State State = Start_Mode;
-	static UART_Mode Mode = 144;
-	static uint8_t Frame = 0;
-	static uint16_t N = 0;
-	static uint16_t Data = 0;
-	static uint16_t Sum = 0;
-
-	switch (State)
-	{
-	case Start_Mode:
-		Mode = dataIn;
-		switch (Mode)
-		{
-		case Test_Command:
-			Frame = 2;
-			break;
-		case Connect_MCU:
-			Frame = 1;
-			break;
-		case Disconnect_MCU:
-			Frame = 1;
-			break;
-		case Velocity_Set:
-			Frame = 2;
-			break;
-		case Position_Set:
-			Frame = 2;
-			break;
-		case Goal_1_Set:
-			Frame = 2;
-			break;
-		case Goal_N_Set:
-			Frame = 3;
-			break;
-		case Go_to_Goal:
-			Frame = 1;
-			break;
-		case Station_Request:
-			Frame = 1;
-			break;
-		case Position_Request:
-			Frame = 1;
-			break;
-		case Velocity_Request:
-			Frame = 1;
-			break;
-		case Gripper_On:
-			Frame = 1;
-			break;
-		case Gripper_Off:
-			Frame = 1;
-			break;
-		case Home_Set:
-			Frame = 1;
-			break;
-		}
-
-
-		switch (Frame)
-		{
-		case 1:
-			State = Check_Sum;
-			break;
-		case 2:
-			State = Data_Frame;
-			break;
-		case 3:
-			State = N_Station;
-			break;
-		break;
-		}
-	case N_Station:
-		N = dataIn;
-		State = Data_Frame;
-		break;
-	case Data_Frame:
-		Data = dataIn;
-		switch (Mode)
-		{
-		case Test_Command:
-			State = Check_Sum;
-			break;
-		case Velocity_Set:
-			Velocity_Max_RPM = (float)Data*10/255;
-			State = Check_Sum;
-			break;
-		case Position_Set:
-			Position_Want_Degree = (float)(Data/10000)*360;
-			State = Check_Sum;
-			break;
-		case Goal_1_Set:
-			Position_Want_Degree = Station_List[dataIn-1];
-			State = Check_Sum;
-			break;
-		case Goal_N_Set:
-			N -= 1;
-			if (N == 0)
-			{
-				State = Check_Sum;
-			}
-			break;
-		break;
-		}
-
-		break;
-	case Check_Sum:
-		Sum = dataIn;
-		switch (Frame)
-		{
-		case 1:
-			break;
-		case 2:
-			break;
-		case 3:
-			break;
-
-		break;
-		}
-
-		break;
-
-	break;
-	}
-
-}
 uint64_t micros()
 {
 	return _micros + htim2.Instance->CNT;
