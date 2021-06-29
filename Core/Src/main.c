@@ -54,6 +54,9 @@ DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
+
+#define NO_KALMAN;
+
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
 uint64_t Time_Velocity_Stamp = 0;
@@ -271,11 +274,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	int16_t inputChar = UARTReadChar(&UART2);
+	/*int16_t inputChar = UARTReadChar(&UART2);
 	if (inputChar != -1)
 	{
 		UART_Protocol(&UART2, inputChar);
-	}
+	}*/
 
 
 
@@ -759,6 +762,11 @@ void Velocity_Control()  //Velocity Control PID
 void Distance_Calculation()	//Calculate that distance is short or long
 {
 	//acceleration is fixed at 0.5 radian per second^2
+#ifdef NO_KALMAN
+	Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution;  //degree
+#else
+	Position_Now_Degree = Position_Now_Rad*180/pi;
+#endif
 	Distance_Degree_Set = Position_Want_Degree - Position_Now_Degree;  //Get distance from  EndPoint - StartPoint in degree
 	if (Distance_Degree_Set < 0)
 	{
@@ -800,9 +808,11 @@ void Distance_Calculation()	//Calculate that distance is short or long
 
 void Position_Control()  //Position Control PID
 {
-
-	//Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution;  //degree
+#ifdef NO_KALMAN
+	Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution;  //degree
+#else
 	Position_Now_Degree = Position_Now_Rad*180/pi;
+#endif
 
 	Position_Error = Position_Want_Degree - Position_Now_Degree;
 	Position_Error_Sum = Position_Error_Sum + Position_Error;
@@ -815,8 +825,9 @@ void Position_Control()  //Position Control PID
 
 void Trajectory_Generation()  //Position Control with Trajectory Generation
 {
-
-	//Position_Now_Rad  = (Position_Read_Encoder*2*pi)/Encoder_Resolution;  //radian
+#ifdef NO_KALMAN
+	Position_Now_Rad  = (Position_Read_Encoder*2*pi)/Encoder_Resolution;  //radian
+#endif
 
 	if (Trajectory_Flag == 0)
 	{
@@ -920,11 +931,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	else if (htim == &htim4)  //Control Loop
 	{
 		Velocity_Read_Encoder = (Velocity_Read_Encoder*9999 + Encoder_Velocity_Update())/(float)10000;
-		//Position_Read_Encoder = htim1.Instance->CNT; //Read Encoder
-		//Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
+
+#ifdef NO_KALMAN
+		Position_Read_Encoder = htim1.Instance->CNT; //Read Encoder
+		Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
+#else
 		Kalman_Filter();
 		Position_Now_Rad = Position_Kalman;
 		Velocity_Now_Rad = Velocity_Kalman;
+#endif
 
 		if ((Distance_Calculated == 0 ) && (Position_Now_Degree != Position_Want_Degree)  && (GO == 0)) //Distance not calculated and not arrive at next station
 		{
