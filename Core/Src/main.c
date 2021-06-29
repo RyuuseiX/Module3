@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "math.h"
+#include "string.h"
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,10 +50,17 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
+
+uint8_t NO_KALMAN = 1;
+uint8_t Prev_NO_KALMAN = 1;
+
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
 uint64_t Time_Velocity_Stamp = 0;
@@ -56,14 +68,15 @@ uint64_t Time_Trajectory_Stamp = 0;	//Time to calculate in "Trajectory_Generatai
 uint16_t Encoder_Resolution = 8192; //2048*4
 uint16_t Encoder_Overflow = 4096;	//8192/2
 float pi = 3.14159265359;			//value of pi
+const uint8_t Station_List[10] = {0,0,0,0,0,0,0,0,0,0};
+uint16_t Goal_List[20] = {0};
+uint16_t GO = 0;
 
-#define LONG 1						//long distance
-#define SHORT 0						//short distance
 uint16_t Distance_Length = 0;		//Long or Short distance
 uint16_t Distance_Calculated = 0;	//Calculate distance yet?
 
 //Velocity Control
-float Velocity_Encoder = 0;  		//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in pulse per second
+float Velocity_Read_Encoder = 0;  		//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in pulse per second
 float Velocity_Now_RPM = 0;			//Encoder's velocity Calculated from "Encoder_Velocity_Update()" in RPM
 float Velocity_Want_RPM = 0;		//Velocity calculated for control motor at the time
 float Velocity_K_P = 2000;			//K_P of "Velocity_Control()"
@@ -76,7 +89,7 @@ float Velocity_Error_Prev = 0;		//last Velocity_Error
 int16_t PWM_Out = 0;				//PWM for motor
 
 //Position Control
-float Position_Encoder = 0;  		//Encoder's now position in CNT
+float Position_Read_Encoder = 0;  		//Encoder's now position in CNT
 float Position_Now_Degree = 0;		//Encoder's now position in degree
 float Position_Want_Degree = 0;		//Position of the end point  (actually same as Point_Stop)
 float Position_Prev_Degree = 0;		//Check that Position_Want_Degree changed or not
@@ -100,7 +113,7 @@ float Distance_Radian_Set = 0;		//Distance from Point_Start to Point_Stop in rad
 float Distance_Blend = 0;			//Calculated distance for when a != 0 and check that have enough distance and time to achieve Velocity_Max_RPM or not
 float Distance_Center = 0;			//Distance when Velocity_Want = Velocity_Max_RPM
 float Position_Start = 0;			//Start position
-float Position_Rad = 0;				//Encoder's now position in radian
+float Position_Now_Rad = 0;				//Encoder's now position in radian
 float Time_Blend = 0;				//Calculated time for when a != 0 and have enough distance and time to achieve Velocity_Max_RPM
 float Time_All = 0;					//Calculated time for all distance
 float Time_Center = 0;
@@ -110,6 +123,18 @@ float Time_All_Micro = 0;			//Time_All in microsecond
 float Time_Center_Micro = 0;
 uint16_t Trajectory_Flag = 0;		//For keeping Position_Start & Time_Start or Finished
 
+//Kalman_Filter
+float Sigma_a = 14;
+float Sigma_w = 0.8;
+float Q = 0;
+float R = 0;
+float Position_Kalman = 0;
+float Velocity_Kalman = 0;
+float p11 = 0;
+float p12 = 0;
+float p21 = 0;
+float p22 = 0;
+const float CON_T = 0.001;
 
 //debugging
 float Flag4 = 0;
@@ -118,16 +143,59 @@ float P2 = 0;
 float P3 = 0;
 float Distance_Traveled = 0;
 
+//UART Protocol
+typedef struct _UartStructure
+{
+	UART_HandleTypeDef *huart;
+	uint16_t TxLen, RxLen;
+	uint8_t *TxBuffer;
+	uint16_t TxTail, TxHead;
+	uint8_t *RxBuffer;
+	uint16_t RxTail; //RXHeadUseDMA
+
+} UARTStucrture;
+uint8_t UART_Ack1[2] = {88,117};
+uint8_t UART_Ack2[2] = {70,110};
+UARTStucrture UART2 = {0};
+typedef enum
+{
+	Start_Mode,
+	N_Station,
+	Data_Frame,
+	Check_Sum
+}UART_State;
+
+typedef enum
+{
+	Test_Command = 145,
+	Connect_MCU,
+	Disconnect_MCU,
+	Velocity_Set,
+	Position_Set,
+	Goal_1_Set,
+	Goal_N_Set,
+	Go_to_Goal,
+	Station_Request,
+	Position_Request,
+	Velocity_Request,
+	Gripper_On,
+	Gripper_Off,
+	Home_Set
+}UART_Mode;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 uint64_t micros();
 float Encoder_Velocity_Update();	//Read Encoder position and calculate into velocity
@@ -136,6 +204,15 @@ void Velocity_Control();			//PID velocity control and calculate PWM for "Motor_D
 void Position_Control();			//PID position control for short distance
 void Trajectory_Generation();		//Calculate velocity base on Accel_Max for long distance
 void Distance_Calculation();		//Calculate distance if it short or long
+void Kalman_Filter();
+
+void UARTInit(UARTStucrture *uart);
+void UARTResetStart(UARTStucrture *uart);
+uint32_t UARTGetRxHead(UARTStucrture *uart);
+int16_t UARTReadChar(UARTStucrture *uart);
+void UARTTxDumpBuffer(UARTStucrture *uart);
+void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len);
+void UART_Protocol(UARTStucrture *uart, int16_t dataIn);
 
 /* USER CODE END PFP */
 
@@ -172,16 +249,25 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_TIM2_Init();
   MX_I2C1_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);					//micros()
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);   //Start reading encoder
   HAL_TIM_Base_Start(&htim3);						//Start TIM3
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);			//Start PWM TIM3
+
+  UART2.huart = &huart2;
+  UART2.RxLen = 255;
+  UART2.TxLen = 255;
+  UARTInit(&UART2);
+  UARTResetStart(&UART2);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -192,19 +278,47 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+
+	  	int16_t inputChar = UARTReadChar(&UART2);
+	  	if (inputChar != -1)
+	  	{
+	  		UART_Protocol(&UART2, inputChar);
+	  	}
+
 	  if (micros() - Time_Velocity_Stamp >= 100)
 	  {
 		  Time_Velocity_Stamp = micros();
-		  Velocity_Encoder = (Velocity_Encoder*9999 + Encoder_Velocity_Update())/(float)10000;
-
+		  Velocity_Read_Encoder = (Velocity_Read_Encoder*9999 + Encoder_Velocity_Update())/(float)10000;
+		  Velocity_Now_RPM = (Velocity_Read_Encoder*60)/Encoder_Resolution;	//Convert Velocity_Read_Encoder (Encoder's velocity at the moment) to RPM
+		  Velocity_Now_Rad = (Velocity_Now_RPM*2*pi)/60;
 	  }
 	  if (micros() - Time_Sampling_Stamp >= 1000)	  //Control loop
 	  {
 
 			Time_Sampling_Stamp = micros();
-			Position_Encoder = htim1.Instance->CNT; //Read Encoder
-			Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
-			if ((Distance_Calculated == 0 )&& (Position_Now_Degree != Position_Want_Degree)) //Distance not calculated and not arrive at next station
+			if(NO_KALMAN)
+			{
+				Position_Read_Encoder = htim1.Instance->CNT; //Read Encoder
+				Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
+				NO_KALMAN=Prev_NO_KALMAN;
+			}
+			else
+			{
+				if(NO_KALMAN!=Prev_NO_KALMAN)
+				{
+					Position_Read_Encoder = htim1.Instance->CNT; //Read Encoder
+					Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution; //Convert Encoder CNT to degree
+					Position_Kalman = Position_Now_Degree*pi/180;
+				}
+
+				Kalman_Filter();
+				Position_Now_Rad = Position_Kalman;
+				Velocity_Now_Rad = Velocity_Kalman;
+				Position_Now_Degree = Position_Now_Rad*180/pi;
+			}
+
+
+		if ((Distance_Calculated == 0 )&& (Position_Now_Degree != Position_Want_Degree)) //Distance not calculated and not arrive at next station
 			{
 				Distance_Calculation();		//Calculate distance
 			}
@@ -216,7 +330,7 @@ int main(void)
 
 				if(Trajectory_Flag == 4)
 				{
-					if(Distance_Length == 0)
+					/*if(Distance_Length == 0)
 					{
 						Trajectory_Flag = 5;
 					}
@@ -224,7 +338,9 @@ int main(void)
 					{
 						Distance_Calculation();
 						Trajectory_Flag = 0;
-					}
+					}*/
+
+					Trajectory_Flag = 5;
 
 				}
 
@@ -244,6 +360,7 @@ int main(void)
 				}
 				Velocity_Want_RPM = 0;
 				Velocity_Control();
+				PWM_Out = 0;
 				Motor_Drive_PWM();			//Drive
 
 			}
@@ -490,6 +607,51 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 0;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 1000;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -519,6 +681,25 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
 
 }
 
@@ -642,11 +823,45 @@ void Motor_Drive_PWM()	//Motor drive
 		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_DIRECTION, GPIO_PIN_SET);
 	}
 }
+void Kalman_Filter()
+{
+	Q = powf(Sigma_a, 2);
+	R = powf(Sigma_w, 2);
+
+	float Position_Kalman_New = Position_Kalman + (Velocity_Kalman*CON_T);
+	float Velocity_Kalman_New = 0 + Velocity_Kalman;
+	float ye = Velocity_Now_Rad - Velocity_Kalman_New;
+
+	p11 = p11 + (CON_T*p21) + (Q*powf(fabs(CON_T),4))/4 + (powf(fabs(CON_T),2)*(p12 + CON_T*p22))/CON_T;
+	p12 = p12 + (CON_T*p22) + (Q*CON_T*powf(fabs(CON_T),2))/2;
+	p21 = (2*CON_T*p21 + Q*powf(fabs(CON_T),4) + 2*p22*powf(fabs(CON_T),2))/(2*CON_T);
+	p22 = Q*powf(fabs(CON_T),2) + p22;
+
+	Position_Kalman_New = Position_Kalman_New + (p12*ye)/(R+p22);
+	Velocity_Kalman_New = Velocity_Kalman_New + (p22*ye)/(R+p22);
+
+	p11 = p11 - (p12*p21)/(R+p22);
+	p12 = p12 - (p12*p22)/(R+p22);
+	p21 = -p21*(p22/(R+22)-1);
+	p22 = -p22*(p22/(R+22)-1);
+
+	Position_Kalman = Position_Kalman_New;
+	Velocity_Kalman = Velocity_Kalman_New;
+}
 void Velocity_Control()  //Velocity Control PID
 {
 
-	Velocity_Now_RPM = (Velocity_Encoder*60)/Encoder_Resolution;	//Convert Velocity_Encoder (Encoder's velocity at the moment) to RPM
-	Velocity_Now_Rad = (Velocity_Now_RPM*2*pi)/60;
+	if(NO_KALMAN)
+	{
+		Velocity_Now_RPM = (Velocity_Read_Encoder*60)/Encoder_Resolution;	//Convert Velocity_Read_Encoder (Encoder's velocity at the moment) to RPM
+			Velocity_Now_Rad = (Velocity_Now_RPM*2*pi)/60;
+	}
+
+	else
+	{
+		Velocity_Now_Rad = Velocity_Kalman;
+		Velocity_Now_RPM = Velocity_Now_Rad*60/(2*pi);
+	}
 
 	if (Velocity_Want_RPM > Velocity_Max_RPM)		//If Velocity_Want_RPM exceed Velocity_Max_RPM
 	{
@@ -668,6 +883,15 @@ void Velocity_Control()  //Velocity Control PID
 void Distance_Calculation()	//Calculate that distance is short or long
 {
 	//acceleration is fixed at 0.5 radian per second^2
+	if(NO_KALMAN)
+	{
+		Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution;  //degree
+	}
+	else
+	{
+		Position_Now_Degree = Position_Now_Rad*180/pi;
+	}
+
 	Distance_Degree_Set = Position_Want_Degree - Position_Now_Degree;  //Get distance from  EndPoint - StartPoint in degree
 	if (Distance_Degree_Set < 0)
 	{
@@ -685,7 +909,7 @@ void Distance_Calculation()	//Calculate that distance is short or long
 
 	if ((2*Distance_Blend) < Distance_Radian_Set)					   //Distance_Radian_Set is long enough to achieve Velocity_Max_Rad
 	{
-		Distance_Length = LONG;
+		Distance_Length = 1;
 		Distance_Center = Distance_Radian_Set - (2*Distance_Blend);	   //Distance when a=0 radian per second^2
 		Time_Center = Distance_Center/Velocity_Max_Rad;
 		Time_Center_Micro = Time_Center*1000000;
@@ -695,7 +919,7 @@ void Distance_Calculation()	//Calculate that distance is short or long
 
 	else if ((2*Distance_Blend) >= Distance_Radian_Set)				   //Distance_Radian_Set is not long enough to achieve Velocity_Max_Rad
 	{
-		Distance_Length = SHORT;
+		Distance_Length = 0;
 		Time_Blend = sqrtf(Distance_Radian_Set*2);					   //Time used for motor to reach Velocity_Achieve_Rad with a=0.5 radian per second^2
 		Time_Blend_Micro = Time_Blend*1000000;						   //Change from second to microsecond
 		Time_All = (2*Time_Blend);
@@ -708,8 +932,18 @@ void Distance_Calculation()	//Calculate that distance is short or long
 }
 void Position_Control()  //Position Control PID
 {
-	Position_Encoder = htim1.Instance->CNT;
-	Position_Now_Degree = (Position_Encoder*360)/Encoder_Resolution;  //degree
+
+	if(NO_KALMAN)
+	{
+		Position_Read_Encoder = htim1.Instance->CNT;
+		Position_Now_Degree = (Position_Read_Encoder*360)/Encoder_Resolution;  //degree
+
+	}
+
+	else
+	{
+		Position_Now_Degree = Position_Now_Rad*180/pi;
+	}
 
 	Position_Error = Position_Want_Degree - Position_Now_Degree;
 	Position_Error_Sum = Position_Error_Sum + Position_Error;
@@ -721,18 +955,26 @@ void Position_Control()  //Position Control PID
 }
 void Trajectory_Generation()  //Position Control with Trajectory Generation
 {
+	if(NO_KALMAN)
+	{
+		Position_Read_Encoder = htim1.Instance->CNT;
+			Position_Now_Rad  = (Position_Read_Encoder*2*pi)/Encoder_Resolution;  //radian
 
-	Position_Encoder = htim1.Instance->CNT;
-	Position_Rad  = (Position_Encoder*2*pi)/Encoder_Resolution;  //radian
+	}
+	else
+	{
+		Position_Now_Rad = Position_Kalman;
+	}
+
 	if (Trajectory_Flag == 0)
 	{
 		Time_Start = micros();
-		Position_Start = Position_Rad;
+		Position_Start = Position_Now_Rad;
 		Trajectory_Flag = 1;
 	}
 	Time_Trajectory_Stamp = micros();
-	Distance_Traveled = Position_Rad-Position_Start;
-	if (Distance_Length == LONG)
+	Distance_Traveled = Position_Now_Rad-Position_Start;
+	if (Distance_Length == 1)
 	{
 		if ((Time_Trajectory_Stamp-Time_Start) <= Time_Blend_Micro)
 		{
@@ -757,11 +999,12 @@ void Trajectory_Generation()  //Position Control with Trajectory Generation
 		}
 		else if ((Time_Trajectory_Stamp-Time_Start) >= Time_All_Micro)
 		{
+			Velocity_Want_RPM = 0;
 			Trajectory_Flag = 4;
 		}
 	}
 
-	else if (Distance_Length == SHORT)
+	else if (Distance_Length == 0)
 	{
 		if ((Time_Trajectory_Stamp-Time_Start) <= Time_Blend_Micro)
 		{
@@ -781,6 +1024,216 @@ void Trajectory_Generation()  //Position Control with Trajectory Generation
 		}
 	}
 
+
+}
+void UARTInit(UARTStucrture *uart)
+{
+	//dynamic memory allocate
+	uart->RxBuffer = (uint8_t*) calloc(sizeof(uint8_t), UART2.RxLen);
+	uart->TxBuffer = (uint8_t*) calloc(sizeof(uint8_t), UART2.TxLen);
+	uart->RxTail = 0;
+	uart->TxTail = 0;
+	uart->TxHead = 0;
+
+}
+
+void UARTResetStart(UARTStucrture *uart)
+{
+	HAL_UART_Receive_DMA(uart->huart, uart->RxBuffer, uart->RxLen);
+}
+uint32_t UARTGetRxHead(UARTStucrture *uart)
+{
+	return uart->RxLen - __HAL_DMA_GET_COUNTER(uart->huart->hdmarx);
+}
+int16_t UARTReadChar(UARTStucrture *uart)
+{
+	int16_t Result = -1; // -1 Mean no new data
+
+	//check Buffer Position
+	if (uart->RxTail != UARTGetRxHead(uart))
+	{
+		//get data from buffer
+		Result = uart->RxBuffer[uart->RxTail];
+		uart->RxTail = (uart->RxTail + 1) % uart->RxLen;
+
+	}
+	return Result;
+
+}
+void UARTTxDumpBuffer(UARTStucrture *uart)
+{
+	static uint8_t MultiProcessBlocker = 0;
+
+	if (uart->huart->gState == HAL_UART_STATE_READY && !MultiProcessBlocker)
+	{
+		MultiProcessBlocker = 1;
+
+		if (uart->TxHead != uart->TxTail)
+		{
+			//find len of data in buffer (Circular buffer but do in one way)
+			uint16_t sentingLen =
+					uart->TxHead > uart->TxTail ?
+							uart->TxHead - uart->TxTail :
+							uart->TxLen - uart->TxTail;
+
+			//sent data via DMA
+			HAL_UART_Transmit_DMA(uart->huart, &(uart->TxBuffer[uart->TxTail]),
+					sentingLen);
+			//move tail to new position
+			uart->TxTail = (uart->TxTail + sentingLen) % uart->TxLen;
+
+		}
+		MultiProcessBlocker = 0;
+	}
+}
+void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len)
+{
+	//check data len is more than buffur?
+	uint16_t lenAddBuffer = (len <= uart->TxLen) ? len : uart->TxLen;
+	// find number of data before end of ring buffer
+	uint16_t numberOfdataCanCopy =
+			lenAddBuffer <= uart->TxLen - uart->TxHead ?
+					lenAddBuffer : uart->TxLen - uart->TxHead;
+	//copy data to the buffer
+	memcpy(&(uart->TxBuffer[uart->TxHead]), pData, numberOfdataCanCopy);
+
+	//Move Head to new position
+
+	uart->TxHead = (uart->TxHead + lenAddBuffer) % uart->TxLen;
+	//Check that we copy all data That We can?
+	if (lenAddBuffer != numberOfdataCanCopy)
+	{
+		memcpy(uart->TxBuffer, &(pData[numberOfdataCanCopy]),
+				lenAddBuffer - numberOfdataCanCopy);
+	}
+	UARTTxDumpBuffer(uart);
+
+}
+void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
+{
+	static UART_State State = Start_Mode;
+	static UART_Mode Mode = 144;
+	static uint8_t Frame = 0;
+	static uint16_t N = 0;
+	static uint16_t Data = 0;
+	static uint16_t Sum = 0;
+
+	switch (State)
+	{
+	case Start_Mode:
+		Mode = dataIn;
+		switch (Mode)
+		{
+		case Test_Command:
+			Frame = 2;
+			break;
+		case Connect_MCU:
+			Frame = 1;
+			break;
+		case Disconnect_MCU:
+			Frame = 1;
+			break;
+		case Velocity_Set:
+			Frame = 2;
+			break;
+		case Position_Set:
+			Frame = 2;
+			break;
+		case Goal_1_Set:
+			Frame = 2;
+			break;
+		case Goal_N_Set:
+			Frame = 3;
+			break;
+		case Go_to_Goal:
+			Frame = 1;
+			break;
+		case Station_Request:
+			Frame = 1;
+			break;
+		case Position_Request:
+			Frame = 1;
+			break;
+		case Velocity_Request:
+			Frame = 1;
+			break;
+		case Gripper_On:
+			Frame = 1;
+			break;
+		case Gripper_Off:
+			Frame = 1;
+			break;
+		case Home_Set:
+			Frame = 1;
+			break;
+		}
+
+
+		switch (Frame)
+		{
+		case 1:
+			State = Check_Sum;
+			break;
+		case 2:
+			State = Data_Frame;
+			break;
+		case 3:
+			State = N_Station;
+			break;
+		break;
+		}
+	case N_Station:
+		N = dataIn;
+		State = Data_Frame;
+		break;
+	case Data_Frame:
+		Data = dataIn;
+		switch (Mode)
+		{
+		case Test_Command:
+			State = Check_Sum;
+			break;
+		case Velocity_Set:
+			Velocity_Max_RPM = (float)Data*10/255;
+			State = Check_Sum;
+			break;
+		case Position_Set:
+			Position_Want_Degree = (float)(Data/10000)*360;
+			State = Check_Sum;
+			break;
+		case Goal_1_Set:
+			Position_Want_Degree = Station_List[dataIn-1];
+			State = Check_Sum;
+			break;
+		case Goal_N_Set:
+			N -= 1;
+			if (N == 0)
+			{
+				State = Check_Sum;
+			}
+			break;
+		break;
+		}
+
+		break;
+	case Check_Sum:
+		Sum = dataIn;
+		switch (Frame)
+		{
+		case 1:
+			break;
+		case 2:
+			break;
+		case 3:
+			break;
+
+		break;
+		}
+
+		break;
+
+	break;
+	}
 
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
