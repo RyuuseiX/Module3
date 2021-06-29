@@ -25,6 +25,8 @@
 #include "math.h"
 #include "string.h"
 #include "stdio.h"
+#include <stdlib.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -143,6 +145,7 @@ float P2 = 0;
 float P3 = 0;
 float Distance_Traveled = 0;
 
+
 //UART Protocol
 typedef struct _UartStructure
 {
@@ -157,12 +160,13 @@ typedef struct _UartStructure
 uint8_t UART_Ack1[2] = {88,117};
 uint8_t UART_Ack2[2] = {70,110};
 UARTStucrture UART2 = {0};
+
 typedef enum
 {
 	Start_Mode,
 	N_Station,
 	Data_Frame,
-	Check_Sum
+	Check_Sum,
 }UART_State;
 
 typedef enum
@@ -183,6 +187,13 @@ typedef enum
 	Home_Set
 }UART_Mode;
 
+UART_State State = Start_Mode;
+UART_Mode Mode = 144;
+uint8_t Frame;
+uint8_t N;
+uint8_t Data;
+uint8_t Sum;
+uint8_t len;
 
 /* USER CODE END PV */
 
@@ -213,6 +224,7 @@ int16_t UARTReadChar(UARTStucrture *uart);
 void UARTTxDumpBuffer(UARTStucrture *uart);
 void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len);
 void UART_Protocol(UARTStucrture *uart, int16_t dataIn);
+void UART_Do_Command();
 
 /* USER CODE END PFP */
 
@@ -283,6 +295,8 @@ int main(void)
 	  	if (inputChar != -1)
 	  	{
 	  		UART_Protocol(&UART2, inputChar);
+			len+=1;
+
 	  	}
 
 	  if (micros() - Time_Velocity_Stamp >= 100)
@@ -667,10 +681,10 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.BaudRate = 512000;
+  huart2.Init.WordLength = UART_WORDLENGTH_9B;
   huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Parity = UART_PARITY_EVEN;
   huart2.Init.Mode = UART_MODE_TX_RX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
@@ -854,7 +868,7 @@ void Velocity_Control()  //Velocity Control PID
 	if(NO_KALMAN)
 	{
 		Velocity_Now_RPM = (Velocity_Read_Encoder*60)/Encoder_Resolution;	//Convert Velocity_Read_Encoder (Encoder's velocity at the moment) to RPM
-			Velocity_Now_Rad = (Velocity_Now_RPM*2*pi)/60;
+		Velocity_Now_Rad = (Velocity_Now_RPM*2*pi)/60;
 	}
 
 	else
@@ -1111,12 +1125,6 @@ void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len)
 }
 void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 {
-	static UART_State State = Start_Mode;
-	static UART_Mode Mode = 144;
-	static uint8_t Frame = 0;
-	static uint16_t N = 0;
-	static uint16_t Data = 0;
-	static uint16_t Sum = 0;
 
 	switch (State)
 	{
@@ -1126,62 +1134,72 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		{
 		case Test_Command:
 			Frame = 2;
+			State = Data_Frame;
 			break;
 		case Connect_MCU:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Disconnect_MCU:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Velocity_Set:
 			Frame = 2;
+			State = Data_Frame;
 			break;
 		case Position_Set:
 			Frame = 2;
+			State = Data_Frame;
 			break;
 		case Goal_1_Set:
 			Frame = 2;
+			State = Data_Frame;
 			break;
 		case Goal_N_Set:
 			Frame = 3;
+			State = N_Station;
 			break;
 		case Go_to_Goal:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Station_Request:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Position_Request:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Velocity_Request:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Gripper_On:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Gripper_Off:
 			Frame = 1;
+			State = Check_Sum;
 			break;
 		case Home_Set:
 			Frame = 1;
-			break;
-		}
-
-
-		switch (Frame)
-		{
-		case 1:
 			State = Check_Sum;
 			break;
-		case 2:
-			State = Data_Frame;
-			break;
-		case 3:
-			State = N_Station;
+		default:
+			State = Start_Mode;
+			Mode = 144;
+			Frame = 0;
+			Data = 0;
+			Sum = 0;
+			N = 0;
+			len = 0;
 			break;
 		break;
 		}
+		break;
 	case N_Station:
 		N = dataIn;
 		State = Data_Frame;
@@ -1194,15 +1212,12 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			State = Check_Sum;
 			break;
 		case Velocity_Set:
-			Velocity_Max_RPM = (float)Data*10/255;
 			State = Check_Sum;
 			break;
 		case Position_Set:
-			Position_Want_Degree = (float)(Data/10000)*360;
 			State = Check_Sum;
 			break;
 		case Goal_1_Set:
-			Position_Want_Degree = Station_List[dataIn-1];
 			State = Check_Sum;
 			break;
 		case Goal_N_Set:
@@ -1221,19 +1236,123 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		switch (Frame)
 		{
 		case 1:
+			if (Sum == (uint8_t)~Mode)
+			{
+				UART_Do_Command();
+			}
+			else
+			{
+				State = Start_Mode;
+				Mode = 144;
+				Frame = 0;
+				Data = 0;
+				Sum = 0;
+				N = 0;
+				len = 0;
+			}
 			break;
 		case 2:
+			if (Sum == (uint8_t)~(Mode+Data))
+			{
+				UART_Do_Command();
+			}
+			else
+			{
+				State = Start_Mode;
+				Mode = 144;
+				Frame = 0;
+				Data = 0;
+				Sum = 0;
+				N = 0;
+				len = 0;
+			}
 			break;
 		case 3:
-			break;
 
+			if (Sum == (uint8_t)~(Mode))
+			{
+				UART_Do_Command();
+			}
+			else
+			{
+				State = Start_Mode;
+				Mode = 144;
+				Frame = 0;
+				Data = 0;
+				Sum = 0;
+				N = 0;
+				len = 0;
+			}
+			break;
 		break;
 		}
 
+		State = Start_Mode;
 		break;
 
 	break;
 	}
+
+}
+void UART_Do_Command()
+{
+	if (Frame == 1)
+	{
+		uint8_t Test[] = {0, 0};
+		Test[0] = Mode;
+		Test[1] = Sum;
+		UARTTxWrite(&UART2, Test, len);
+		len = 0;
+	}
+	else if (Frame == 2)
+	{
+		uint8_t Test[] = {0, 0, 0};
+		Test[0] = Mode;
+		Test[1] = Data;
+		Test[2] = Sum;
+		UARTTxWrite(&UART2, Test, len);
+		len = 0;
+	}
+	else if (Frame == 3)
+	{
+
+
+	}
+
+	switch (Mode)
+	{
+	case Test_Command:
+		break;
+	case Connect_MCU:
+		break;
+	case Disconnect_MCU:
+		break;
+	case Velocity_Set:
+		break;
+	case Position_Set:
+		break;
+	case Goal_1_Set:
+		break;
+	case Goal_N_Set:
+		break;
+	case Go_to_Goal:
+		break;
+	case Station_Request:
+		break;
+	case Position_Request:
+		break;
+	case Velocity_Request:
+		break;
+	case Gripper_On:
+		break;
+	case Gripper_Off:
+		break;
+	case Home_Set:
+		break;
+	}
+
+
+
 
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
