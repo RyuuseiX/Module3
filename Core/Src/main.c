@@ -55,7 +55,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
-#define NO_KALMAN
+#define NO_KALMAN;
 
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
@@ -827,8 +827,6 @@ void Trajectory_Generation()  //Position Control with Trajectory Generation
 {
 #ifdef NO_KALMAN
 	Position_Now_Rad  = (Position_Read_Encoder*2*pi)/Encoder_Resolution;  //radian
-#else
-	Position_Now_Rad = Position_Kalman;
 #endif
 
 	if (Trajectory_Flag == 0)
@@ -943,11 +941,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		Velocity_Now_Rad = Velocity_Kalman;
 #endif
 
-		if ((Distance_Calculated == 0 ) && (Position_Prev_Degree != Position_Want_Degree)  && (GO == 0)) //Distance not calculated and not arrive at next station
+		if ((Distance_Calculated == 0 ) && (Position_Now_Degree != Position_Want_Degree)  && (GO == 0)) //Distance not calculated and not arrive at next station
 		{
 			Distance_Calculation();		//Calculate distance
 		}
-		else if ((Distance_Calculated == 1) && (Position_Prev_Degree != Position_Want_Degree) && (Trajectory_Flag < 5) && (GO == 1)) //Distance calculated and not arrive at next station
+		else if ((Distance_Calculated == 1) && (Position_Now_Degree != Position_Want_Degree) && (Trajectory_Flag < 5) && (GO == 1)) //Distance calculated and not arrive at next station
 		{
 			Trajectory_Generation();	//Get Velocity_Want_RPM
 			Velocity_Control();
@@ -984,9 +982,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				GO = 0;
 			}
 			Velocity_Want_RPM = 0;
-
-			//Velocity_Control();
-			PWM_Out = 0;
+			Velocity_Control();
 			Motor_Drive_PWM();			//Drive
 
 		}
