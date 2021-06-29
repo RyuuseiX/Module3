@@ -134,17 +134,9 @@ float P2 = 0;
 float P3 = 0;
 float Distance_Traveled = 0;
 
-//UART Protocol
-typedef struct _UartStructure
-{
-	UART_HandleTypeDef *huart;
-	uint16_t TxLen, RxLen;
-	uint8_t *TxBuffer;
-	uint16_t TxTail, TxHead;
-	uint8_t *RxBuffer;
-	uint16_t RxTail; //RXHeadUseDMA
+int x = 0;
 
-} UARTStucrture;
+//UART Protocol
 uint8_t Acknowledge_1[2] = {88,117};
 uint8_t Acknowledge_2[2] = {70,110};
 
