@@ -923,22 +923,16 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 }
 void UART_Do_Command()
 {
+	uint8_t Test[] = {0, 0, 0};
+	Test[0] = Mode;
 	if (Frame == 1)
 	{
-		uint8_t Test[] = {0, 0};
-		Test[0] = Mode;
 		Test[1] = Sum;
-		UARTTxWrite(&UART2, Test, len);
-		len = 0;
 	}
 	else if (Frame == 2)
 	{
-		uint8_t Test[] = {0, 0, 0};
-		Test[0] = Mode;
 		Test[1] = Data;
 		Test[2] = Sum;
-		UARTTxWrite(&UART2, Test, len);
-		len = 0;
 	}
 	else if (Frame == 3)
 	{
@@ -949,6 +943,10 @@ void UART_Do_Command()
 	switch (Mode)
 	{
 	case Test_Command:
+		UARTTxWrite(&UART2, UART_Ack1, 2);
+		HAL_Delay(1);
+		UARTTxWrite(&UART2, Test, 3);
+		HAL_Delay(1);
 		break;
 	case Connect_MCU:
 		break;
@@ -976,7 +974,10 @@ void UART_Do_Command()
 		break;
 	case Home_Set:
 		break;
+	break;
 	}
+
+	len = 0;
 
 
 
