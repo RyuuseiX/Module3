@@ -63,6 +63,8 @@ DMA_HandleTypeDef hdma_usart2_tx;
 uint8_t NO_KALMAN = 1;
 uint8_t Prev_NO_KALMAN = 1;
 
+uint8_t Connected = 0;
+
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
 uint64_t Time_Velocity_Stamp = 0;
@@ -171,9 +173,10 @@ UART_State State = Start_Mode;
 UART_Mode Mode = 144;
 uint8_t Frame;
 uint8_t N;
-uint8_t Data;
 uint8_t Sum;
 uint8_t len;
+uint8_t N_Data = 0;
+uint8_t Data_List[] = {0, 0};
 
 /* USER CODE END PV */
 
@@ -268,8 +271,13 @@ int main(void)
 	  	int16_t inputChar = UARTReadChar(&UART2);
 	  	if (inputChar != -1)
 	  	{
+	  		len+=1;
 	  		UART_Protocol(&UART2, inputChar);
-			len+=1;
+	  	}
+
+	  	if (Connected)
+	  	{
+	  		//MCU enabled
 	  	}
 
   }
@@ -752,11 +760,16 @@ void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len)
 }
 void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 {
-
+	if (State == Start_Mode)
+	{
+		uint8_t N_Data = 0;
+		uint8_t Data_List[] = {0, 0};
+	}
 	switch (State)
 	{
 	case Start_Mode:
 		Mode = dataIn;
+
 		switch (Mode)
 		{
 		case Test_Command:
@@ -819,7 +832,6 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			State = Start_Mode;
 			Mode = 144;
 			Frame = 0;
-			Data = 0;
 			Sum = 0;
 			N = 0;
 			len = 0;
@@ -829,30 +841,41 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		break;
 	case N_Station:
 		N = dataIn;
+		Data_List[N];
 		State = Data_Frame;
 		break;
 	case Data_Frame:
-		Data = dataIn;
+		Data_List[N_Data] = dataIn;
+		N_Data += 1;
 		switch (Mode)
 		{
 		case Test_Command:
+			Data_List[1] = 0;
 			State = Check_Sum;
 			break;
 		case Velocity_Set:
-			State = Check_Sum;
-			break;
-		case Position_Set:
-			State = Check_Sum;
-			break;
-		case Goal_1_Set:
-			State = Check_Sum;
-			break;
-		case Goal_N_Set:
-			N -= 1;
-			if (N == 0)
+			if (N_Data == 2)
 			{
 				State = Check_Sum;
 			}
+			break;
+		case Position_Set:
+			if (N_Data == 2)
+			{
+				State = Check_Sum;
+			}
+		case Goal_1_Set:
+			if (N_Data == 2)
+			{
+				State = Check_Sum;
+			}
+		case Goal_N_Set:
+			if (N_Data == N)
+			{
+				State = Check_Sum;
+			}
+			break;
+		default:
 			break;
 		break;
 		}
@@ -860,6 +883,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		break;
 	case Check_Sum:
 		Sum = dataIn;
+		uint8_t Data_Sum = 0;
 		switch (Frame)
 		{
 		case 1:
@@ -872,14 +896,14 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				State = Start_Mode;
 				Mode = 144;
 				Frame = 0;
-				Data = 0;
 				Sum = 0;
 				N = 0;
 				len = 0;
+				N_Data = 0;
 			}
 			break;
 		case 2:
-			if (Sum == (uint8_t)~(Mode+Data))
+			if (Sum == (uint8_t)~(Mode+Data_List[0]+Data_List[1]))
 			{
 				UART_Do_Command();
 			}
@@ -888,15 +912,18 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				State = Start_Mode;
 				Mode = 144;
 				Frame = 0;
-				Data = 0;
 				Sum = 0;
 				N = 0;
 				len = 0;
+				N_Data = 0;
 			}
 			break;
 		case 3:
-
-			if (Sum == (uint8_t)~(Mode))
+			for (uint8_t i=0; i<N_Data; i++)
+			{
+				Data_Sum += Data_List[i];
+			}
+			if (Sum == (uint8_t)~(Mode+Data_Sum))
 			{
 				UART_Do_Command();
 			}
@@ -905,11 +932,13 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				State = Start_Mode;
 				Mode = 144;
 				Frame = 0;
-				Data = 0;
 				Sum = 0;
 				N = 0;
 				len = 0;
+				N_Data = 0;
 			}
+			break;
+		default:
 			break;
 		break;
 		}
@@ -930,45 +959,44 @@ void UART_Do_Command()
 
 	switch (Mode)
 	{
-	case Test_Command:
-		Answer[1] = Data;
+	case Test_Command: //F2
+		Answer[1] = Data_List[0];
 		Answer[2] = Sum;
 		UARTTxWrite(&UART2, Answer, 3);
 		HAL_Delay(1);
 		break;
-	case Connect_MCU:
+	case Connect_MCU: //F1
+		Connected = 1;
 		break;
-	case Disconnect_MCU:
+	case Disconnect_MCU: //F1
+		Connected = 0;
 		break;
-	case Velocity_Set:
+	case Velocity_Set: //F2
 		break;
-	case Position_Set:
+	case Position_Set: //F2
 		break;
-	case Goal_1_Set:
+	case Goal_1_Set: //F2
 		break;
-	case Goal_N_Set:
+	case Goal_N_Set: //F3
 		break;
-	case Go_to_Goal:
+	case Go_to_Goal: //F2
 		break;
-	case Station_Request:
+	case Station_Request: //F1
 		break;
-	case Position_Request:
+	case Position_Request: //F1
 		break;
-	case Velocity_Request:
+	case Velocity_Request: //F1
 		break;
-	case Gripper_On:
+	case Gripper_On: //F1
 		break;
-	case Gripper_Off:
+	case Gripper_Off: //F1
 		break;
-	case Home_Set:
+	case Home_Set: //F1
 		break;
 	break;
 	}
 
 	len = 0;
-
-
-
 
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
