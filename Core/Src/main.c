@@ -64,6 +64,7 @@ uint8_t NO_KALMAN = 1;
 uint8_t Prev_NO_KALMAN = 1;
 
 uint8_t Connected = 0;
+uint8_t Effector_On = 0;
 
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
@@ -95,7 +96,8 @@ int16_t PWM_Out = 0;				//PWM for motor
 //Position Control
 float Position_Read_Encoder = 0;  		//Encoder's now position in CNT
 float Position_Now_Degree = 0;		//Encoder's now position in degree
-float Position_Want_Degree = 0;		//Position of the end point  (actually same as Point_Stop)
+float Position_Want_Rad = 0;		//Position of the end point in radian
+float Position_Want_Degree = 0;		//Position of the end point in degree
 float Position_Prev_Degree = 0;		//Check that Position_Want_Degree changed or not
 float Position_K_P = 228.62;		//K_P of "Position_Control()"
 float Position_K_I = 0;			    //K_I of "Position_Control()"
@@ -278,7 +280,17 @@ int main(void)
 	  	if (Connected)
 	  	{
 	  		//MCU enabled
+	  		if(GO)
+	  		{
+	  			//Rotate to goal station(s)
+	  		}
+
+	  		if (Effector_On)
+	  		{
+	  			//Effector on
+	  		}
 	  	}
+
 
   }
   /* USER CODE END 3 */
@@ -972,14 +984,17 @@ void UART_Do_Command()
 		Connected = 0;
 		break;
 	case Velocity_Set: //F2
+		//Velocity_Max_RPM = Data_List[0]
 		break;
 	case Position_Set: //F2
+		Position_Want_Degree
 		break;
 	case Goal_1_Set: //F2
 		break;
 	case Goal_N_Set: //F3
 		break;
 	case Go_to_Goal: //F2
+		GO = 1;
 		break;
 	case Station_Request: //F1
 		break;
@@ -988,8 +1003,10 @@ void UART_Do_Command()
 	case Velocity_Request: //F1
 		break;
 	case Gripper_On: //F1
+		Effector_On = 1;
 		break;
 	case Gripper_Off: //F1
+		Effector_On = 0;
 		break;
 	case Home_Set: //F1
 		break;
