@@ -923,24 +923,17 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 }
 void UART_Do_Command()
 {
-	uint8_t Test[] = {0, 0, 0};
-	Test[0] = Mode;
+	uint8_t Answer[] = {0, 0, 0};
+	Answer[0] = Mode;
 	UARTTxWrite(&UART2, UART_Ack1, 2);
 	HAL_Delay(1);
-	if (Frame == 1)
-	{
-		Test[1] = Sum;
-	}
-	else if (Frame == 2)
-	{
-		Test[1] = Data;
-		Test[2] = Sum;
-	}
 
 	switch (Mode)
 	{
 	case Test_Command:
-		UARTTxWrite(&UART2, Test, 3);
+		Answer[1] = Data;
+		Answer[2] = Sum;
+		UARTTxWrite(&UART2, Answer, 3);
 		HAL_Delay(1);
 		break;
 	case Connect_MCU:
