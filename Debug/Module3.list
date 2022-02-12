@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00016f0e  00000000  00000000  00034658  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   00010d3b  00000000  00000000  0004b566  2**0
+ 17 .debug_line   00010d3d  00000000  00000000  0004b566  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    00091762  00000000  00000000  0005c2a1  2**0
+ 18 .debug_str    00091762  00000000  00000000  0005c2a3  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000053  00000000  00000000  000eda03  2**0
+ 19 .comment      00000053  00000000  00000000  000eda05  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00004490  00000000  00000000  000eda58  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -2412,50 +2412,51 @@ void UART_Do_Command()
  80010de:	4b2a      	ldr	r3, [pc, #168]	; (8001188 <UART_Do_Command+0xc0>)
  80010e0:	781b      	ldrb	r3, [r3, #0]
  80010e2:	713b      	strb	r3, [r7, #4]
+	UARTTxWrite(&UART2, UART_Ack1, 2);
+ 80010e4:	2202      	movs	r2, #2
+ 80010e6:	4929      	ldr	r1, [pc, #164]	; (800118c <UART_Do_Command+0xc4>)
+ 80010e8:	4829      	ldr	r0, [pc, #164]	; (8001190 <UART_Do_Command+0xc8>)
+ 80010ea:	f7ff fe0d 	bl	8000d08 <UARTTxWrite>
+	HAL_Delay(1);
+ 80010ee:	2001      	movs	r0, #1
+ 80010f0:	f000 fbc4 	bl	800187c <HAL_Delay>
 	if (Frame == 1)
- 80010e4:	4b29      	ldr	r3, [pc, #164]	; (800118c <UART_Do_Command+0xc4>)
- 80010e6:	781b      	ldrb	r3, [r3, #0]
- 80010e8:	2b01      	cmp	r3, #1
- 80010ea:	d103      	bne.n	80010f4 <UART_Do_Command+0x2c>
+ 80010f4:	4b27      	ldr	r3, [pc, #156]	; (8001194 <UART_Do_Command+0xcc>)
+ 80010f6:	781b      	ldrb	r3, [r3, #0]
+ 80010f8:	2b01      	cmp	r3, #1
+ 80010fa:	d103      	bne.n	8001104 <UART_Do_Command+0x3c>
 	{
 		Test[1] = Sum;
- 80010ec:	4b28      	ldr	r3, [pc, #160]	; (8001190 <UART_Do_Command+0xc8>)
- 80010ee:	781b      	ldrb	r3, [r3, #0]
- 80010f0:	717b      	strb	r3, [r7, #5]
- 80010f2:	e009      	b.n	8001108 <UART_Do_Command+0x40>
-	}
-	else if (Frame == 2)
- 80010f4:	4b25      	ldr	r3, [pc, #148]	; (800118c <UART_Do_Command+0xc4>)
- 80010f6:	781b      	ldrb	r3, [r3, #0]
- 80010f8:	2b02      	cmp	r3, #2
- 80010fa:	d105      	bne.n	8001108 <UART_Do_Command+0x40>
-	{
-		Test[1] = Data;
- 80010fc:	4b25      	ldr	r3, [pc, #148]	; (8001194 <UART_Do_Command+0xcc>)
+ 80010fc:	4b26      	ldr	r3, [pc, #152]	; (8001198 <UART_Do_Command+0xd0>)
  80010fe:	781b      	ldrb	r3, [r3, #0]
  8001100:	717b      	strb	r3, [r7, #5]
-		Test[2] = Sum;
- 8001102:	4b23      	ldr	r3, [pc, #140]	; (8001190 <UART_Do_Command+0xc8>)
- 8001104:	781b      	ldrb	r3, [r3, #0]
- 8001106:	71bb      	strb	r3, [r7, #6]
+ 8001102:	e009      	b.n	8001118 <UART_Do_Command+0x50>
+	}
+	else if (Frame == 2)
+ 8001104:	4b23      	ldr	r3, [pc, #140]	; (8001194 <UART_Do_Command+0xcc>)
+ 8001106:	781b      	ldrb	r3, [r3, #0]
+ 8001108:	2b02      	cmp	r3, #2
+ 800110a:	d105      	bne.n	8001118 <UART_Do_Command+0x50>
 	{
-
-
+		Test[1] = Data;
+ 800110c:	4b23      	ldr	r3, [pc, #140]	; (800119c <UART_Do_Command+0xd4>)
+ 800110e:	781b      	ldrb	r3, [r3, #0]
+ 8001110:	717b      	strb	r3, [r7, #5]
+		Test[2] = Sum;
+ 8001112:	4b21      	ldr	r3, [pc, #132]	; (8001198 <UART_Do_Command+0xd0>)
+ 8001114:	781b      	ldrb	r3, [r3, #0]
+ 8001116:	71bb      	strb	r3, [r7, #6]
 	}
 
 	switch (Mode)
- 8001108:	4b1f      	ldr	r3, [pc, #124]	; (8001188 <UART_Do_Command+0xc0>)
- 800110a:	781b      	ldrb	r3, [r3, #0]
- 800110c:	3b91      	subs	r3, #145	; 0x91
- 800110e:	2b0d      	cmp	r3, #13
- 8001110:	d830      	bhi.n	8001174 <UART_Do_Command+0xac>
- 8001112:	a201      	add	r2, pc, #4	; (adr r2, 8001118 <UART_Do_Command+0x50>)
- 8001114:	f852 f023 	ldr.w	pc, [r2, r3, lsl #2]
- 8001118:	08001151 	.word	0x08001151
- 800111c:	08001175 	.word	0x08001175
- 8001120:	08001175 	.word	0x08001175
- 8001124:	08001175 	.word	0x08001175
- 8001128:	08001175 	.word	0x08001175
+ 8001118:	4b1b      	ldr	r3, [pc, #108]	; (8001188 <UART_Do_Command+0xc0>)
+ 800111a:	781b      	ldrb	r3, [r3, #0]
+ 800111c:	3b91      	subs	r3, #145	; 0x91
+ 800111e:	2b0d      	cmp	r3, #13
+ 8001120:	d828      	bhi.n	8001174 <UART_Do_Command+0xac>
+ 8001122:	a201      	add	r2, pc, #4	; (adr r2, 8001128 <UART_Do_Command+0x60>)
+ 8001124:	f852 f023 	ldr.w	pc, [r2, r3, lsl #2]
+ 8001128:	08001161 	.word	0x08001161
  800112c:	08001175 	.word	0x08001175
  8001130:	08001175 	.word	0x08001175
  8001134:	08001175 	.word	0x08001175
@@ -2465,21 +2466,17 @@ void UART_Do_Command()
  8001144:	08001175 	.word	0x08001175
  8001148:	08001175 	.word	0x08001175
  800114c:	08001175 	.word	0x08001175
+ 8001150:	08001175 	.word	0x08001175
+ 8001154:	08001175 	.word	0x08001175
+ 8001158:	08001175 	.word	0x08001175
+ 800115c:	08001175 	.word	0x08001175
 	{
 	case Test_Command:
-		UARTTxWrite(&UART2, UART_Ack1, 2);
- 8001150:	2202      	movs	r2, #2
- 8001152:	4911      	ldr	r1, [pc, #68]	; (8001198 <UART_Do_Command+0xd0>)
- 8001154:	4811      	ldr	r0, [pc, #68]	; (800119c <UART_Do_Command+0xd4>)
- 8001156:	f7ff fdd7 	bl	8000d08 <UARTTxWrite>
-		HAL_Delay(1);
- 800115a:	2001      	movs	r0, #1
- 800115c:	f000 fb8e 	bl	800187c <HAL_Delay>
 		UARTTxWrite(&UART2, Test, 3);
  8001160:	1d3b      	adds	r3, r7, #4
  8001162:	2203      	movs	r2, #3
  8001164:	4619      	mov	r1, r3
- 8001166:	480d      	ldr	r0, [pc, #52]	; (800119c <UART_Do_Command+0xd4>)
+ 8001166:	480a      	ldr	r0, [pc, #40]	; (8001190 <UART_Do_Command+0xc8>)
  8001168:	f7ff fdce 	bl	8000d08 <UARTTxWrite>
 		HAL_Delay(1);
  800116c:	2001      	movs	r0, #1
@@ -2507,11 +2504,11 @@ void UART_Do_Command()
  8001182:	bf00      	nop
  8001184:	080054a8 	.word	0x080054a8
  8001188:	20000002 	.word	0x20000002
- 800118c:	200001c8 	.word	0x200001c8
- 8001190:	200002c0 	.word	0x200002c0
- 8001194:	20000274 	.word	0x20000274
- 8001198:	20000000 	.word	0x20000000
- 800119c:	200000a0 	.word	0x200000a0
+ 800118c:	20000000 	.word	0x20000000
+ 8001190:	200000a0 	.word	0x200000a0
+ 8001194:	200001c8 	.word	0x200001c8
+ 8001198:	200002c0 	.word	0x200002c0
+ 800119c:	20000274 	.word	0x20000274
  80011a0:	20000350 	.word	0x20000350
 
 080011a4 <HAL_TIM_PeriodElapsedCallback>:

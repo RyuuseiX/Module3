@@ -925,6 +925,8 @@ void UART_Do_Command()
 {
 	uint8_t Test[] = {0, 0, 0};
 	Test[0] = Mode;
+	UARTTxWrite(&UART2, UART_Ack1, 2);
+	HAL_Delay(1);
 	if (Frame == 1)
 	{
 		Test[1] = Sum;
@@ -934,17 +936,10 @@ void UART_Do_Command()
 		Test[1] = Data;
 		Test[2] = Sum;
 	}
-	else if (Frame == 3)
-	{
-
-
-	}
 
 	switch (Mode)
 	{
 	case Test_Command:
-		UARTTxWrite(&UART2, UART_Ack1, 2);
-		HAL_Delay(1);
 		UARTTxWrite(&UART2, Test, 3);
 		HAL_Delay(1);
 		break;
