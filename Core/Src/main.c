@@ -60,9 +60,6 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
-uint8_t NO_KALMAN = 1;
-uint8_t Prev_NO_KALMAN = 1;
-
 uint8_t Connected = 0;
 uint8_t Effector_On = 0;
 
@@ -205,6 +202,10 @@ void UARTTxWrite(UARTStucrture *uart, uint8_t *pData, uint16_t len);
 void UART_Protocol(UARTStucrture *uart, int16_t dataIn);
 void UART_Do_Command();
 
+uint8_t Decimal2High(uint16_t integer);
+uint8_t Decimal2Low(uint16_t integer);
+uint16_t HighLow2Decimal(uint8_t high_byte, uint8_t low_byte);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -259,6 +260,8 @@ int main(void)
   UARTInit(&UART2);
   UARTResetStart(&UART2);
 
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -268,7 +271,9 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
+	  	hightest = Decimal2High(15634);
+	  	lowtest = Decimal2Low(15634);
+	  	inttest = HighLow2Decimal(hightest, lowtest);
 
 	  	int16_t inputChar = UARTReadChar(&UART2);
 	  	if (inputChar != -1)
@@ -987,7 +992,6 @@ void UART_Do_Command()
 		//Velocity_Max_RPM = Data_List[0]
 		break;
 	case Position_Set: //F2
-		Position_Want_Degree
 		break;
 	case Goal_1_Set: //F2
 		break;
@@ -1015,6 +1019,20 @@ void UART_Do_Command()
 
 	len = 0;
 
+}
+uint8_t Decimal2High(uint16_t integer)
+{
+	return (uint8_t)((integer>>8) & 0xff);
+}
+uint8_t Decimal2Low(uint16_t integer)
+{
+	return (uint8_t)(integer & 0xff);
+}
+uint16_t HighLow2Decimal(uint8_t high_byte, uint8_t low_byte)
+{
+	uint16_t high = (high_byte & 0xff) <<8;
+	uint16_t low = low_byte & 0xff;
+	return high|low;
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
