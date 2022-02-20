@@ -62,6 +62,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 uint8_t Connected = 0;
 uint8_t Effector_On = 0;
+uint8_t Error = 0;
 
 uint64_t _micros = 0;				//Keep track of time
 uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
@@ -141,6 +142,8 @@ typedef struct _UartStructure
 uint8_t UART_Ack1[2] = {88,117};
 uint8_t UART_Ack2[2] = {70,110};
 UARTStucrture UART2 = {0};
+uint8_t N_Data = 0;
+uint8_t Data_List[] = {0, 0};
 
 typedef enum
 {
@@ -152,6 +155,8 @@ typedef enum
 
 typedef enum
 {
+	Ack2 = 70,
+	Ack1 = 88,
 	Test_Command = 145,
 	Connect_MCU,
 	Disconnect_MCU,
@@ -174,8 +179,6 @@ uint8_t Frame;
 uint8_t N;
 uint8_t Sum;
 uint8_t len;
-uint8_t N_Data = 0;
-uint8_t Data_List[] = {0, 0};
 
 /* USER CODE END PV */
 
@@ -205,6 +208,7 @@ void UART_Do_Command();
 uint8_t Decimal2High(uint16_t integer);
 uint8_t Decimal2Low(uint16_t integer);
 uint16_t HighLow2Decimal(uint8_t high_byte, uint8_t low_byte);
+uint8_t Velocity_Mapping(uint8_t max_velocity);
 
 /* USER CODE END PFP */
 
@@ -271,9 +275,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  	hightest = Decimal2High(15634);
-	  	lowtest = Decimal2Low(15634);
-	  	inttest = HighLow2Decimal(hightest, lowtest);
 
 	  	int16_t inputChar = UARTReadChar(&UART2);
 	  	if (inputChar != -1)
@@ -779,8 +780,9 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 {
 	if (State == Start_Mode)
 	{
-		uint8_t N_Data = 0;
-		uint8_t Data_List[] = {0, 0};
+		N_Data = 0;
+		Data_List[0] = 0;
+		Data_List[1] = 0;
 	}
 	switch (State)
 	{
@@ -789,12 +791,20 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 
 		switch (Mode)
 		{
+		case Ack2:
+			Frame = 0;
+			State = Check_Sum;
+			break;
+		case Ack1:
+			Frame = 0;
+			State = Check_Sum;
+			break;
 		case Test_Command:
 			Frame = 2;
 			State = Data_Frame;
 			break;
 		case Connect_MCU:
-			Frame = 1;
+			Frame = 0;
 			State = Check_Sum;
 			break;
 		case Disconnect_MCU:
@@ -852,6 +862,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			Sum = 0;
 			N = 0;
 			len = 0;
+			Error = 1;
 			break;
 		break;
 		}
@@ -867,11 +878,13 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		switch (Mode)
 		{
 		case Test_Command:
-			Data_List[1] = 0;
-			State = Check_Sum;
+			if (N_Data == 1)
+			{
+				State = Check_Sum;
+			}
 			break;
 		case Velocity_Set:
-			if (N_Data == 2)
+			if (N_Data == 1)
 			{
 				State = Check_Sum;
 			}
@@ -903,6 +916,28 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		uint8_t Data_Sum = 0;
 		switch (Frame)
 		{
+		case 0:
+			if (Mode == Ack1)
+			{
+				if(Sum != 117)
+				{
+					Error = 3;
+				}
+			}
+			else if (Mode == Ack2)
+			{
+				if(Sum != 110)
+				{
+					Error = 3;
+				}
+			}
+			else if (Mode == Connect_MCU)
+			{
+				if (Sum == (uint8_t)~Mode)
+				{
+					Connected = 1;
+				}
+			}
 		case 1:
 			if (Sum == (uint8_t)~Mode)
 			{
@@ -917,6 +952,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				N = 0;
 				len = 0;
 				N_Data = 0;
+				Error = 2;
 			}
 			break;
 		case 2:
@@ -933,6 +969,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				N = 0;
 				len = 0;
 				N_Data = 0;
+				Error = 2;
 			}
 			break;
 		case 3:
@@ -953,6 +990,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				N = 0;
 				len = 0;
 				N_Data = 0;
+				Error = 2;
 			}
 			break;
 		default:
@@ -969,52 +1007,65 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 }
 void UART_Do_Command()
 {
-	uint8_t Answer[] = {0, 0, 0};
-	Answer[0] = Mode;
-	UARTTxWrite(&UART2, UART_Ack1, 2);
-	HAL_Delay(1);
-
-	switch (Mode)
-	{
-	case Test_Command: //F2
-		Answer[1] = Data_List[0];
-		Answer[2] = Sum;
-		UARTTxWrite(&UART2, Answer, 3);
+	if (Connected)
+	{	uint8_t Answer[] = {0, 0, 0, 0};
+		Answer[0] = Mode;
+		UARTTxWrite(&UART2, UART_Ack1, 2);
 		HAL_Delay(1);
+
+		switch (Mode)
+		{
+		case Test_Command: //F2
+
+			Answer[1] = Data_List[0];
+			Answer[2] = Sum;
+			UARTTxWrite(&UART2, Answer, 3);
+			HAL_Delay(1);
+			break;
+		case Connect_MCU: //F1
+			Connected = 1;
+			break;
+		case Disconnect_MCU: //F1
+			Connected = 0;
+			break;
+		case Velocity_Set: //F2
+			Velocity_Max_RPM = (float)Data_List[0] * 10 / 255;
+			break;
+		case Position_Set: //F2
+			Position_Want_Rad = (float)HighLow2Decimal(Data_List[0], Data_List[1])/10000;
+			break;
+		case Goal_1_Set: //F2
+			break;
+		case Goal_N_Set: //F3
+			break;
+		case Go_to_Goal: //F2
+			GO = 1;
+			break;
+		case Station_Request: //F1
+			break;
+		case Position_Request: //F1
+			Answer[1] = Decimal2High(Position_Now_Rad*10000);
+			Answer[2] = Decimal2Low(Position_Now_Rad*10000);
+			Answer[3] = (uint8_t)~(Answer[0] + Answer[1] + Answer[2] + Answer[3]);
+			UARTTxWrite(&UART2, Answer, 4);
+			break;
+		case Velocity_Request: //F1
+			Answer[1] = Velocity_Mapping(Velocity_Max_RPM);
+			Answer[2] = (uint8_t)~(Answer[0] + Answer[1] + Answer[2]);
+			UARTTxWrite(&UART2, Answer, 3);
+			break;
+		case Gripper_On: //F1
+			Effector_On = 1;
+			break;
+		case Gripper_Off: //F1
+			Effector_On = 0;
+			break;
+		case Home_Set: //F1
+			break;
+		default:
+			break;
 		break;
-	case Connect_MCU: //F1
-		Connected = 1;
-		break;
-	case Disconnect_MCU: //F1
-		Connected = 0;
-		break;
-	case Velocity_Set: //F2
-		//Velocity_Max_RPM = Data_List[0]
-		break;
-	case Position_Set: //F2
-		break;
-	case Goal_1_Set: //F2
-		break;
-	case Goal_N_Set: //F3
-		break;
-	case Go_to_Goal: //F2
-		GO = 1;
-		break;
-	case Station_Request: //F1
-		break;
-	case Position_Request: //F1
-		break;
-	case Velocity_Request: //F1
-		break;
-	case Gripper_On: //F1
-		Effector_On = 1;
-		break;
-	case Gripper_Off: //F1
-		Effector_On = 0;
-		break;
-	case Home_Set: //F1
-		break;
-	break;
+		}
 	}
 
 	len = 0;
@@ -1033,6 +1084,10 @@ uint16_t HighLow2Decimal(uint8_t high_byte, uint8_t low_byte)
 	uint16_t high = (high_byte & 0xff) <<8;
 	uint16_t low = low_byte & 0xff;
 	return high|low;
+}
+uint8_t Velocity_Mapping(uint8_t max_velocity)
+{
+	return Velocity_Max_RPM /10 * 255;
 }
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
