@@ -245,6 +245,11 @@ uint8_t N;
 uint8_t Sum;
 uint8_t len;
 
+//I2C
+uint16_t Address = 0x23;
+uint16_t Regis_Open = 0x45;
+uint16_t Regis_Prepare = 0x23;
+uint16_t Regis_Read = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -396,8 +401,40 @@ int main(void)
 	  	}
 		if (Effector_On)
 		{
-			HAL_Delay(1);
-			Effector_On = 0;
+			HAL_I2C_Master_Transmit_IT(&hi2c1, Address, (uint8_t*)Regis_Open, 1);
+			HAL_Delay(5);
+			HAL_I2C_Master_Transmit_IT(&hi2c1, Address, (uint8_t*)Regis_Prepare, 1);
+			HAL_I2C_Master_Receive_IT(&hi2c1, Address, (uint8_t*)Regis_Read, 1);
+			uint8_t wait;
+			if(Regis_Read == 0x78)
+			{
+				Effector_On = 0;
+			}
+			else
+			{
+				while (Regis_Read != 0x78)
+				{
+					if (Regis_Read == 0x12)
+					{
+						wait = 5;
+					}
+					else if (Regis_Read == 0x34)
+					{
+						wait = 4;
+					}
+					else if (Regis_Read == 0x56)
+					{
+						wait = 1;
+					}
+					HAL_Delay(wait);
+					HAL_I2C_Master_Transmit_IT(&hi2c1, Address, Regis_Prepare, 1);
+					HAL_I2C_Master_Receive_IT(&hi2c1, Address, Regis_Read, 1);
+				}
+				Effector_On = 0;
+			}
+
+
+
 		}
   }
   /* USER CODE END 3 */
