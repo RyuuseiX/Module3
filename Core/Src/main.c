@@ -386,13 +386,18 @@ int main(void)
 				if (GO == 1)
 				{
 					quintic();
+					GO = 0;
+					Effector_On = 1;
+					UARTTxWrite(&UART2, UART_Ack2, 2);
+					HAL_Delay(1);
 				}
 
 			}
 	  	}
 		if (Effector_On)
 		{
-			//Effector on
+			HAL_Delay(1);
+			Effector_On = 0;
 		}
   }
   /* USER CODE END 3 */
