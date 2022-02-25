@@ -61,7 +61,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
-uint8_t Connected = 0;
+uint8_t Connected = 1;
 uint8_t Effector_On = 0;
 uint8_t Error = 0;
 
@@ -70,8 +70,10 @@ uint64_t Time_Sampling_Stamp = 0;	//Control loop time stamp
 uint64_t Time_Measure_Stamp = 0;
 uint16_t Encoder_Resolution = 8192; //2048*4
 uint16_t Encoder_Overflow = 4096;	//8192/2
-float pi = 3.14159265359;			//value of pi
-const uint8_t Station_List[10] = {0,0,0,0,0,0,0,0,0,0};
+float pi = 3.14159;			//value of pi
+const uint16_t Station_List[10] = {360,30,60,90,120,150,180,210,240,270};
+uint8_t Current_Station = 10;
+uint8_t Next_Station = 0;
 uint8_t Goal_List[20] = {0};
 uint8_t GO = 0;
 
@@ -115,6 +117,7 @@ float c_5 = 0;
 //parameter
 uint8_t initial = 1;
 float tau = 0; //sec
+uint8_t quintic_end = 0;
 
 //position control
 float desired_position = 0;
@@ -381,35 +384,44 @@ int main(void)
 			Time_Sampling_Stamp = micros();
 
 			//frang code set home
-			Proximity[0] = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+			Proximity[1] = Proximity[0];
+			Proximity[0] = HAL_GPIO_ReadPin(GPIO_Input_Proxreal_GPIO_Port, GPIO_Input_Proxreal_Pin);
+
 			if (set_home_finished == 0)
 			{
-				Home_Setting();
+				//Home_Setting();
+				set_home_finished = 1;
 			}
 			else
 			{
 				if (GO == 1)
 				{
 					quintic();
-					GO = 0;
-					Effector_On = 1;
-					UARTTxWrite(&UART2, UART_Ack2, 2);
-					HAL_Delay(1);
+					if(initial == 1)
+					{
+						GO = 0;
+						Effector_On = 1;
+						Current_Station = Next_Station;
+						UARTTxWrite(&UART2, UART_Ack2, 2);
+						HAL_Delay(1);
+					}
+
 				}
 
 			}
 	  	}
-		if (Effector_On)
+	  	if (Effector_On)
 		{
-			HAL_I2C_Master_Transmit_IT(&hi2c1, Address, (uint8_t*)Regis_Open, 1);
-			HAL_Delay(5);
-			HAL_I2C_Master_Transmit_IT(&hi2c1, Address, (uint8_t*)Regis_Prepare, 1);
-			HAL_I2C_Master_Receive_IT(&hi2c1, Address, (uint8_t*)Regis_Read, 1);
+			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Open, 1, 200);
+			HAL_Delay(5100);
+			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
+			HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
 			uint8_t wait;
 			if(Regis_Read == 0x78)
 			{
 				Effector_On = 0;
 			}
+
 			else
 			{
 				while (Regis_Read != 0x78)
@@ -427,8 +439,8 @@ int main(void)
 						wait = 1;
 					}
 					HAL_Delay(wait);
-					HAL_I2C_Master_Transmit_IT(&hi2c1, Address, Regis_Prepare, 1);
-					HAL_I2C_Master_Receive_IT(&hi2c1, Address, Regis_Read, 1);
+					HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
+					HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
 				}
 				Effector_On = 0;
 			}
@@ -981,7 +993,7 @@ void quintic()
 		if ((micros()/1000000.0)-time_initial >= tau_max)
 		{
 			initial = 1;
-			angle_rad_start = angle_rad_stop;
+			angle_rad_start = Position_Now_Rad;
 			PWM_Out = 0;
 			__HAL_TIM_SET_COMPARE(&htim3, PWM_CHANNEL, PWM_Out);
 			error_position = 0;
@@ -1370,6 +1382,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			N = 0;
 			len = 0;
 			Error = 1;
+
 			break;
 		break;
 		}
@@ -1401,11 +1414,13 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			{
 				State = Check_Sum;
 			}
+			break;
 		case Goal_1_Set:
-			if (N_Data == 2)
+			if (N_Data == 1)
 			{
 				State = Check_Sum;
 			}
+			break;
 		case Goal_N_Set:
 			if (N_Data == N)
 			{
@@ -1500,14 +1515,10 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				Error = 2;
 			}
 			break;
-		default:
-			break;
 		break;
 		}
 
-		State = Start_Mode;
-		break;
-
+	State = Start_Mode;
 	break;
 	}
 
@@ -1539,9 +1550,11 @@ void UART_Do_Command()
 			Velocity_Max_RPM = (float)Data_List[0] * 10 / 255;
 			break;
 		case Position_Set: //F2
-			Position_Want_Rad = (float)HighLow2Decimal(Data_List[0], Data_List[1])/10000;
+			angle_rad_stop = (float)HighLow2Decimal(Data_List[0], Data_List[1])/10000;
 			break;
 		case Goal_1_Set: //F2
+			Next_Station = Data_List[0];
+			angle_rad_stop = (float)Station_List[Data_List[0]]*pi/180;
 			break;
 		case Goal_N_Set: //F3
 			break;
@@ -1549,16 +1562,19 @@ void UART_Do_Command()
 			GO = 1;
 			break;
 		case Station_Request: //F1
+			Answer[1] = Current_Station;
+			Answer[2] = (uint8_t)~(Answer[0] + Answer[1]);
+			UARTTxWrite(&UART2, Answer, 3);
 			break;
 		case Position_Request: //F1
 			Answer[1] = Decimal2High(Position_Now_Rad*10000);
 			Answer[2] = Decimal2Low(Position_Now_Rad*10000);
-			Answer[3] = (uint8_t)~(Answer[0] + Answer[1] + Answer[2] + Answer[3]);
+			Answer[3] = (uint8_t)~(Answer[0] + Answer[1] + Answer[2]);
 			UARTTxWrite(&UART2, Answer, 4);
 			break;
 		case Velocity_Request: //F1
-			Answer[1] = (uint8_t)Velocity_Max_RPM /10 * 255;
-			Answer[2] = (uint8_t)~(Answer[0] + Answer[1] + Answer[2]);
+			Answer[1] = ((uint8_t)round(Velocity_Max_RPM *255 /10));
+			Answer[2] = (uint8_t)~(Answer[0] + Answer[1]);
 			UARTTxWrite(&UART2, Answer, 3);
 			break;
 		case Gripper_On: //F1
