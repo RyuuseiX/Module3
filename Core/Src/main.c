@@ -413,10 +413,10 @@ int main(void)
 	  	if (Effector_On)
 		{
 			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Open, 1, 200);
-			HAL_Delay(5100);
+			HAL_Delay(5000);
 			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
 			HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
-			uint8_t wait;
+			//uint8_t wait;
 			if(Regis_Read == 0x78)
 			{
 				Effector_On = 0;
@@ -426,7 +426,7 @@ int main(void)
 			{
 				while (Regis_Read != 0x78)
 				{
-					if (Regis_Read == 0x12)
+					/*if (Regis_Read == 0x12)
 					{
 						wait = 5;
 					}
@@ -437,8 +437,10 @@ int main(void)
 					else if (Regis_Read == 0x56)
 					{
 						wait = 1;
-					}
-					HAL_Delay(wait);
+					}*/
+					
+					//HAL_Delay(wait);
+					HAL_Delay(1000);
 					HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
 					HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
 				}
