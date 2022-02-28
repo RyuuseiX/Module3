@@ -71,13 +71,10 @@ uint64_t Time_Measure_Stamp = 0;
 uint16_t Encoder_Resolution = 8192; //2048*4
 uint16_t Encoder_Overflow = 4096;	//8192/2
 float pi = 3.14159;			//value of pi
-const uint16_t Station_List[10] = {0,30,60,90,120,150,180,210,240,270};
-uint8_t Current_Station = 1;
-uint8_t Next_Station = 1;
-uint8_t Goal_Station = 0;
+const uint16_t Station_List[10] = {360,30,60,90,120,150,180,210,240,270};
+uint8_t Current_Station = 10;
+uint8_t Next_Station = 0;
 uint8_t Goal_List[20] = {0};
-uint8_t N_Goal = 0;
-uint8_t Goal_Count = 0;
 uint8_t GO = 0;
 
 //Velocity Control
@@ -103,7 +100,6 @@ float Position_Prev_Degree = 0;		//Check that Position_Want_Degree changed or no
 //requirement
 float angle_rad_start = 0; //rad
 float angle_rad_stop = 0; //rad
-float angle_rad_last = 0;
 float omega_max = 1; // 1 rad/s = 10 rpm
 float alpha_max = 0.5; // rad/s^2
 //find time duration for each viapoint
@@ -257,8 +253,6 @@ uint16_t Address = 0x23;
 uint16_t Regis_Open = 0x45;
 uint16_t Regis_Prepare = 0x23;
 uint16_t Regis_Read = 0;
-
-uint8_t help = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -385,7 +379,7 @@ int main(void)
 		}
 
 	  	if (micros() - Time_Sampling_Stamp >= 1000)	  //Control loop
-	  	{   help = 0;
+	  	{
 			PWM_Out_Pre = PWM_Out;
 			Time_Sampling_Stamp = micros();
 
@@ -402,75 +396,14 @@ int main(void)
 			{
 				if (GO == 1)
 				{
-					help = 1;
-					if (N_Goal == 0)  //Go to pos or 1 goal
+					quintic();
+					if(initial == 1)
 					{
-						help = 2;
-						quintic();
-						if(initial == 1)
-						{
-							help = 3;
-							Effector_On = 1;
-							Current_Station = Next_Station;
-							if ((float)Station_List[Current_Station]*pi/180 < angle_rad_last)
-							{
-								help = 4;
-								Next_Station = Current_Station + 1;
-								angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
-							}
-
-							else if(Goal_Station == Current_Station)
-							{
-								help =6;
-								GO = 0;
-								UARTTxWrite(&UART2, UART_Ack2, 2);
-								HAL_Delay(1);
-								Goal_Station = 0;
-							}
-							else if (angle_rad_stop == angle_rad_last)
-							{help = 7;
-
-								GO = 0;
-								UARTTxWrite(&UART2, UART_Ack2, 2);
-								HAL_Delay(1);
-							}
-							else
-							{
-								help = 5;
-								angle_rad_stop = angle_rad_last;
-							}
-						}
-					}
-					else // go to N goal
-					{
-
-						quintic();
-
-						if(initial == 1)
-						{
-							Goal_Count -= 1;
-							if (Goal_Count == 0)
-							{
-								GO = 0;
-								UARTTxWrite(&UART2, UART_Ack2, 2);
-								HAL_Delay(1);
-								for (uint8_t i=0; i< 20; i++)
-								{
-									Goal_List[i] = 0;
-								}
-								N_Goal = 0;
-							}
-							else
-							{
-								Next_Station = Goal_List[N_Goal-Goal_Count];
-								angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
-							}
-							Effector_On = 1;
-							Current_Station = Next_Station;
-
-
-						}
-
+						GO = 0;
+						Effector_On = 1;
+						Current_Station = Next_Station;
+						UARTTxWrite(&UART2, UART_Ack2, 2);
+						HAL_Delay(1);
 					}
 
 				}
@@ -479,20 +412,40 @@ int main(void)
 	  	}
 	  	if (Effector_On)
 		{
-	  		help = 8;
 			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Open, 1, 200);
 			HAL_Delay(5000);
 			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
 			HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
-
-			while (Regis_Read != 0x78)
+			//uint8_t wait;
+			if(Regis_Read == 0x78)
 			{
-				help = 9;
-				HAL_Delay(500);
-				HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
-				HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
+				Effector_On = 0;
 			}
-			Effector_On = 0;
+
+			else
+			{
+				while (Regis_Read != 0x78)
+				{
+					/*if (Regis_Read == 0x12)
+					{
+						wait = 5;
+					}
+					else if (Regis_Read == 0x34)
+					{
+						wait = 4;
+					}
+					else if (Regis_Read == 0x56)
+					{
+						wait = 1;
+					}*/
+					
+					//HAL_Delay(wait);
+					HAL_Delay(1000);
+					HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
+					HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
+				}
+				Effector_On = 0;
+			}
 
 
 
@@ -1437,24 +1390,13 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		}
 		break;
 	case N_Station:
-		N_Goal = dataIn;
-		Goal_Count = 0;
+		N = dataIn;
+		Data_List[N];
 		State = Data_Frame;
 		break;
 	case Data_Frame:
-		if (Mode != Goal_N_Set)
-		{
-			Data_List[N_Data] = dataIn;
-			N_Data += 1;
-		}
-		else
-		{
-			Goal_List[Goal_Count] = dataIn & 0b1111;
-			Goal_List[Goal_Count + 1] = dataIn >> 4;
-			Goal_Count += 2;
-		}
-
-
+		Data_List[N_Data] = dataIn;
+		N_Data += 1;
 		switch (Mode)
 		{
 		case Test_Command:
@@ -1482,9 +1424,8 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			}
 			break;
 		case Goal_N_Set:
-			if (Goal_Count >= N_Goal)
+			if (N_Data == N)
 			{
-				Goal_Count = N_Goal;
 				State = Check_Sum;
 			}
 			break;
@@ -1556,11 +1497,11 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			}
 			break;
 		case 3:
-			for (uint8_t i=0; i<N_Goal; i+=2)
+			for (uint8_t i=0; i<N_Data; i++)
 			{
-				Data_Sum += Goal_List[i]|(Goal_List[i+1]<<4);
+				Data_Sum += Data_List[i];
 			}
-			if (Sum == (uint8_t)~(Mode+N_Goal + Data_Sum))
+			if (Sum == (uint8_t)~(Mode+Data_Sum))
 			{
 				UART_Do_Command();
 			}
@@ -1569,7 +1510,7 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 				State = Start_Mode;
 				Mode = 144;
 				Frame = 0;
-				Sum = ~(Mode+N_Goal + Data_Sum);
+				Sum = 0;
 				N = 0;
 				len = 0;
 				N_Data = 0;
@@ -1611,26 +1552,13 @@ void UART_Do_Command()
 			Velocity_Max_RPM = (float)Data_List[0] * 10 / 255;
 			break;
 		case Position_Set: //F2
-			Goal_Station = 0;
-			angle_rad_last = (float)HighLow2Decimal(Data_List[0], Data_List[1])/10000;
-			if (angle_rad_last >= (float)Station_List[Current_Station]*pi/180)
-			{
-				Next_Station = Current_Station + 1;
-				angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
-			}
+			angle_rad_stop = (float)HighLow2Decimal(Data_List[0], Data_List[1])/10000;
 			break;
 		case Goal_1_Set: //F2
-			if (Data_List[0] != Current_Station)
-			{
-				Next_Station = Current_Station + 1;
-				angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
-				Goal_Station = Data_List[0];
-				angle_rad_last = (float)Station_List[Data_List[0]-1]*pi/180;
-			}
+			Next_Station = Data_List[0];
+			angle_rad_stop = (float)Station_List[Data_List[0]]*pi/180;
 			break;
 		case Goal_N_Set: //F3
-			Next_Station = Goal_List[N_Goal-Goal_Count];
-			angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
 			break;
 		case Go_to_Goal: //F2
 			GO = 1;
