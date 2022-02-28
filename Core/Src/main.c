@@ -71,9 +71,11 @@ uint64_t Time_Measure_Stamp = 0;
 uint16_t Encoder_Resolution = 8192; //2048*4
 uint16_t Encoder_Overflow = 4096;	//8192/2
 float pi = 3.14159;			//value of pi
-const uint16_t Station_List[10] = {360,30,60,90,120,150,180,210,240,270};
-uint8_t Current_Station = 10;
-uint8_t Next_Station = 0;
+const uint16_t Station_List[10] = {0,30,60,90,120,150,180,210,240,270};
+uint8_t Current_Station = 1;
+uint8_t Next_Station = 1;
+uint8_t N_Goal = 0;
+uint8_t Goal_Count = 0;
 uint8_t Goal_List[20] = {0};
 uint8_t GO = 0;
 
@@ -399,11 +401,36 @@ int main(void)
 					quintic();
 					if(initial == 1)
 					{
-						GO = 0;
+
 						Effector_On = 1;
 						Current_Station = Next_Station;
-						UARTTxWrite(&UART2, UART_Ack2, 2);
-						HAL_Delay(1);
+						if(N_Goal == 0)
+						{
+							GO = 0;
+							UARTTxWrite(&UART2, UART_Ack2, 2);
+							HAL_Delay(1);
+						}
+						else
+						{
+							Goal_Count -= 1;
+							if (Goal_Count == 0)
+							{
+								GO = 0;
+								UARTTxWrite(&UART2, UART_Ack2, 2);
+								HAL_Delay(1);
+								for (uint8_t i=0; i< 20; i++)
+								{
+									Goal_List[i] = 0;
+								}
+								N_Goal = 0;
+							}
+							else
+							{
+								Next_Station = Goal_List[N_Goal-Goal_Count];
+								angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
+							}
+						}
+
 					}
 
 				}
@@ -416,39 +443,13 @@ int main(void)
 			HAL_Delay(5000);
 			HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
 			HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
-			//uint8_t wait;
-			if(Regis_Read == 0x78)
+			while (Regis_Read != 0x78)
 			{
-				Effector_On = 0;
+				HAL_Delay(500);
+				HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
+				HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
 			}
-
-			else
-			{
-				while (Regis_Read != 0x78)
-				{
-					/*if (Regis_Read == 0x12)
-					{
-						wait = 5;
-					}
-					else if (Regis_Read == 0x34)
-					{
-						wait = 4;
-					}
-					else if (Regis_Read == 0x56)
-					{
-						wait = 1;
-					}*/
-					
-					//HAL_Delay(wait);
-					HAL_Delay(1000);
-					HAL_I2C_Master_Transmit(&hi2c1, Address << 1, &Regis_Prepare, 1, 200);
-					HAL_I2C_Master_Receive(&hi2c1, Address << 1, &Regis_Read, 1, 200);
-				}
-				Effector_On = 0;
-			}
-
-
-
+			Effector_On = 0;
 		}
   }
   /* USER CODE END 3 */
@@ -1390,13 +1391,22 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 		}
 		break;
 	case N_Station:
-		N = dataIn;
-		Data_List[N];
+		N_Goal = dataIn;
+		Goal_Count = 0;
 		State = Data_Frame;
 		break;
 	case Data_Frame:
-		Data_List[N_Data] = dataIn;
-		N_Data += 1;
+		if (Mode != Goal_N_Set)
+		{
+			Data_List[N_Data] = dataIn;
+			N_Data += 1;
+		}
+		else
+		{
+			Goal_List[Goal_Count] = dataIn & 0b1111;
+			Goal_List[Goal_Count + 1] = dataIn >> 4;
+			Goal_Count += 2;
+		}
 		switch (Mode)
 		{
 		case Test_Command:
@@ -1424,8 +1434,9 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			}
 			break;
 		case Goal_N_Set:
-			if (N_Data == N)
+			if (Goal_Count >= N_Goal)
 			{
+				Goal_Count = N_Goal;
 				State = Check_Sum;
 			}
 			break;
@@ -1497,11 +1508,11 @@ void UART_Protocol(UARTStucrture *uart, int16_t dataIn)
 			}
 			break;
 		case 3:
-			for (uint8_t i=0; i<N_Data; i++)
+			for (uint8_t i=0; i<N_Goal; i+=2)
 			{
-				Data_Sum += Data_List[i];
+				Data_Sum += Goal_List[i]|(Goal_List[i+1]<<4);
 			}
-			if (Sum == (uint8_t)~(Mode+Data_Sum))
+			if (Sum == (uint8_t)~(Mode+N_Goal+Data_Sum))
 			{
 				UART_Do_Command();
 			}
@@ -1559,6 +1570,8 @@ void UART_Do_Command()
 			angle_rad_stop = (float)Station_List[Data_List[0]]*pi/180;
 			break;
 		case Goal_N_Set: //F3
+			Next_Station = Goal_List[N_Goal-Goal_Count];
+			angle_rad_stop = (float)Station_List[Next_Station-1]*pi/180;
 			break;
 		case Go_to_Goal: //F2
 			GO = 1;
